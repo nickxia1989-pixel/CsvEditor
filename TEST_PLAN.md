@@ -67,6 +67,13 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235726 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - Browser smoke at `http://127.0.0.1:5173/`: no console errors; double-click inline editor appeared on `monster.csv`, then cleared after switching to `skill.csv`; bottom grid status displayed tab operation status. Browser automation cannot inject native Ctrl+C in this environment, so clipboard success/failure behavior is covered by component tests.
 
+## Verification Run - 2026-06-04 Save And Tab Lifecycle
+
+- `npm test`: 8 files / 50 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235726 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- Browser smoke at `http://127.0.0.1:5173/`: no console errors; rapid repeated opening of `monster.csv` kept one tab; closing an inactive `monster.csv` tab left `skill.csv` active.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

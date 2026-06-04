@@ -60,6 +60,8 @@ export function App() {
   const [polling, setPolling] = useState(false);
   const tabsRef = useRef(tabs);
   const pollBusyRef = useRef(false);
+  const openingPathsRef = useRef(new Set<string>());
+  const pendingActivatePathRef = useRef<string | null>(null);
   const directoryPickerAvailable = canPickDirectory();
 
   useEffect(() => {
@@ -82,20 +84,29 @@ export function App() {
 
   const openFileRef = useCallback(
     async (fileRef: CsvFileRef) => {
+      pendingActivatePathRef.current = fileRef.path;
       const existing = tabsRef.current.find((tab) => tab.path === fileRef.path);
       if (existing) {
         setActiveTabId(existing.id);
         return;
       }
+      if (openingPathsRef.current.has(fileRef.path)) {
+        return;
+      }
 
       try {
+        openingPathsRef.current.add(fileRef.path);
         const id = createTabId();
         const tab = await createTabFromFileRef(fileRef, id);
         setTabs((current) => [...current, tab]);
-        setActiveTabId(id);
+        if (pendingActivatePathRef.current === fileRef.path) {
+          setActiveTabId(id);
+        }
         notify("success", `已打开 ${fileRef.name}`);
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
+      } finally {
+        openingPathsRef.current.delete(fileRef.path);
       }
     },
     [notify]
@@ -296,7 +307,7 @@ export function App() {
     if (blocked > 0) {
       parts.push(`未完成 ${blocked} 个`);
     }
-    notify(blocked > 0 ? "warning" : "success", parts.join("，"));
+    notify(blocked > 0 || skipped > 0 ? "warning" : "success", parts.join("，"));
   }, [notify, saveTab]);
 
   const closeTab = useCallback(

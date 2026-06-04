@@ -66,6 +66,7 @@ class MockDirectoryHandle implements BrowserDirectoryHandle {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   Reflect.deleteProperty(window, "showDirectoryPicker");
 });
 
@@ -129,6 +130,128 @@ describe("App local directory flow", () => {
     await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
     expect(first.getText()).toContain("ID_A,Name");
     expect(second.getText()).toContain("ID_B,Name");
+  });
+
+  it("does not open duplicate tabs for the same CSV path", async () => {
+    const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
+    const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", first],
+      ["second.csv", second]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+    fireEvent.click(screen.getByRole("button", { name: "first.csv" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("tab", { name: "first.csv" })).toHaveLength(1);
+      expect(screen.getAllByRole("tab", { name: "second.csv" })).toHaveLength(1);
+    });
+    expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps a dirty tab open when close confirmation is cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const file = new MockFileHandle("close-safe.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["close-safe.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "close-safe.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "ID_EDIT" } });
+    await waitFor(() => expect(screen.getByText("未保存 1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭 close-safe.csv" }));
+
+    expect(confirm).toHaveBeenCalledWith("close-safe.csv 有未保存修改，确认关闭？");
+    expect(screen.getByRole("tab", { name: "close-safe.csv未保存" })).toBeInTheDocument();
+  });
+
+  it("closes a dirty tab when close confirmation is accepted", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const file = new MockFileHandle("close-confirm.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["close-confirm.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "close-confirm.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "ID_EDIT" } });
+    await waitFor(() => expect(screen.getByText("未保存 1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭 close-confirm.csv" }));
+
+    await waitFor(() => expect(screen.queryByRole("tab", { name: /close-confirm\.csv/ })).not.toBeInTheDocument());
+    expect(screen.getByText("未打开 CSV")).toBeInTheDocument();
+  });
+
+  it("blocks saving over a newer disk version when conflict confirmation is cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const file = new MockFileHandle("conflict.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["conflict.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "conflict.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "LOCAL" } });
+    await waitFor(() => expect(screen.getByText("未保存 1")).toBeInTheDocument());
+
+    file.externalWrite("ID,Name\n1,Disk");
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("conflict.csv 在磁盘上已变化。保存会覆盖磁盘版本，是否继续？"));
+    expect(file.getText()).toBe("ID,Name\n1,Disk");
+    expect(screen.getByText("未保存 1")).toBeInTheDocument();
+    expect(screen.getByText("磁盘版本已变化。当前页签有未保存修改时不会自动覆盖。")).toBeInTheDocument();
+  });
+
+  it("saves over a newer disk version when conflict confirmation is accepted", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const file = new MockFileHandle("conflict-accept.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["conflict-accept.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "conflict-accept.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "LOCAL" } });
+    file.externalWrite("ID,Name\n1,Disk");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toContain("LOCAL,Name");
+    expect(screen.queryByText("磁盘版本已变化。当前页签有未保存修改时不会自动覆盖。")).not.toBeInTheDocument();
   });
 
   it("does not dirty the tab when clearing an empty virtual cell", async () => {
