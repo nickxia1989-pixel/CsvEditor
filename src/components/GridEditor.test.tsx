@@ -139,4 +139,37 @@ describe("GridEditor toolbar", () => {
       focusCol: 1
     });
   });
+
+  it("selects whole columns and rows from the headers", () => {
+    const props = renderGrid();
+
+    fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }));
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 0,
+      anchorCol: 1,
+      focusRow: 2,
+      focusCol: 1
+    });
+
+    fireEvent.pointerDown(screen.getByRole("rowheader", { name: "Row 2" }));
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 1,
+      anchorCol: 0,
+      focusRow: 1,
+      focusCol: 1
+    });
+  });
+
+  it("selects the used data range from the corner header", () => {
+    const props = renderGrid();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Select all cells" }));
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 0,
+      anchorCol: 0,
+      focusRow: 2,
+      focusCol: 1
+    });
+  });
 });

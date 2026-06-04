@@ -316,7 +316,11 @@ button:disabled {
   width: 20px;
   height: 20px;
   margin-left: auto;
+  border: 0;
   border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
 .tab-close:hover {
@@ -576,6 +580,7 @@ button:disabled {
   font-size: 12px;
   font-weight: 600;
   background: #eef3f4;
+  cursor: pointer;
   user-select: none;
 }
 

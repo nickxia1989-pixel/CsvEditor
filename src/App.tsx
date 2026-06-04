@@ -492,6 +492,9 @@ export function App() {
                 if (tab.lockedCells.includes(cellKey(row, col))) {
                   return tab;
                 }
+                if (readCell(tab.data, row, col) === value) {
+                  return tab;
+                }
                 const base = pushUndo(tab);
                 return {
                   ...base,
@@ -503,18 +506,23 @@ export function App() {
             }
             onPaste={(startRow, startCol, values) =>
               updateActiveTab((tab) => {
-                const base = pushUndo(tab);
                 const locked = new Set(tab.lockedCells);
-                let data = base.data;
+                let data = tab.data;
+                let changed = false;
                 values.forEach((line, rowOffset) => {
                   line.forEach((value, colOffset) => {
                     const row = startRow + rowOffset;
                     const col = startCol + colOffset;
-                    if (!locked.has(cellKey(row, col))) {
+                    if (!locked.has(cellKey(row, col)) && readCell(data, row, col) !== value) {
                       data = writeCell(data, row, col, value);
+                      changed = true;
                     }
                   });
                 });
+                if (!changed) {
+                  return { ...tab, status: "粘贴内容没有改变" };
+                }
+                const base = pushUndo(tab);
                 return {
                   ...base,
                   data,
@@ -525,17 +533,26 @@ export function App() {
             }
             onClearRange={(startRow, startCol, endRow, endCol) =>
               updateActiveTab((tab) => {
-                const base = pushUndo(tab);
                 const range = normalizeSelection({ anchorRow: startRow, anchorCol: startCol, focusRow: endRow, focusCol: endCol });
-                const locked = new Set(base.lockedCells);
-                let data = base.data;
+                const locked = new Set(tab.lockedCells);
+                let data = tab.data;
+                let changed = false;
                 for (let row = range.startRow; row <= range.endRow; row += 1) {
+                  if (row >= tab.data.length) {
+                    continue;
+                  }
+                  const rowWidth = tab.data[row]?.length ?? 0;
                   for (let col = range.startCol; col <= range.endCol; col += 1) {
-                    if (!locked.has(cellKey(row, col))) {
+                    if (col < rowWidth && !locked.has(cellKey(row, col)) && readCell(data, row, col) !== "") {
                       data = writeCell(data, row, col, "");
+                      changed = true;
                     }
                   }
                 }
+                if (!changed) {
+                  return { ...tab, status: "没有可清空的内容" };
+                }
+                const base = pushUndo(tab);
                 return { ...base, data, dirty: true, status: "已清空选区" };
               })
             }
@@ -637,19 +654,23 @@ export function App() {
             }
             onDeleteRows={(startRow, endRow) =>
               updateActiveTab((tab) => {
-                if (hasLockedCellInRows(tab.lockedCells, startRow, endRow)) {
+                if (startRow >= tab.data.length) {
+                  return { ...tab, status: "选中行没有已有数据" };
+                }
+                const clampedEndRow = Math.min(endRow, tab.data.length - 1);
+                if (hasLockedCellInRows(tab.lockedCells, startRow, clampedEndRow)) {
                   return { ...tab, status: "选中行包含锁定格，不能删除" };
                 }
                 const base = pushUndo(tab);
-                const nextData = deleteRows(base.data, startRow, endRow);
+                const nextData = deleteRows(base.data, startRow, clampedEndRow);
                 const nextRow = Math.min(startRow, Math.max(0, nextData.length - 1));
                 return {
                   ...base,
                   data: nextData,
-                  lockedCells: shiftLockedCellsForDeletedRows(base.lockedCells, startRow, endRow),
+                  lockedCells: shiftLockedCellsForDeletedRows(base.lockedCells, startRow, clampedEndRow),
                   selection: singleCellSelection(nextRow, base.selection.focusCol),
                   dirty: true,
-                  status: `已删除 ${endRow - startRow + 1} 行`
+                  status: `已删除 ${clampedEndRow - startRow + 1} 行`
                 };
               })
             }
@@ -669,17 +690,24 @@ export function App() {
             }
             onDeleteColumns={(startCol, endCol) =>
               updateActiveTab((tab) => {
-                if (hasLockedCellInColumns(tab.lockedCells, startCol, endCol)) {
+                const width = maxColumnCount(tab.data);
+                if (startCol >= width) {
+                  return { ...tab, status: "选中列没有已有数据" };
+                }
+                const clampedEndCol = Math.min(endCol, width - 1);
+                if (hasLockedCellInColumns(tab.lockedCells, startCol, clampedEndCol)) {
                   return { ...tab, status: "选中列包含锁定格，不能删除" };
                 }
                 const base = pushUndo(tab);
+                const nextData = deleteColumns(base.data, startCol, clampedEndCol);
+                const nextCol = Math.min(startCol, Math.max(0, maxColumnCount(nextData) - 1));
                 return {
                   ...base,
-                  data: deleteColumns(base.data, startCol, endCol),
-                  lockedCells: shiftLockedCellsForDeletedColumns(base.lockedCells, startCol, endCol),
-                  selection: singleCellSelection(base.selection.focusRow, startCol),
+                  data: nextData,
+                  lockedCells: shiftLockedCellsForDeletedColumns(base.lockedCells, startCol, clampedEndCol),
+                  selection: singleCellSelection(base.selection.focusRow, nextCol),
                   dirty: true,
-                  status: `已删除 ${endCol - startCol + 1} 列`
+                  status: `已删除 ${clampedEndCol - startCol + 1} 列`
                 };
               })
             }
@@ -697,9 +725,18 @@ export function App() {
             onAddColumn={() =>
               updateActiveTab((tab) => {
                 const base = pushUndo(tab);
+                const width = maxColumnCount(base.data);
                 return {
                   ...base,
-                  data: base.data.length ? base.data.map((row) => [...row, ""]) : [[""]],
+                  data: base.data.length
+                    ? base.data.map((row) => {
+                        const normalized = [...row];
+                        while (normalized.length < width) {
+                          normalized.push("");
+                        }
+                        return [...normalized, ""];
+                      })
+                    : [[""]],
                   dirty: true,
                   status: "已新增列"
                 };

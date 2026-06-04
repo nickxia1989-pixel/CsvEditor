@@ -89,6 +89,23 @@ describe("file refs and hot refresh model", () => {
     expect(conflicted.latestDiskVersion).toEqual(diskVersion);
   });
 
+  it("marks clean tabs as changed when auto refresh is paused", async () => {
+    const handle = new MockFileHandle("A,B\n1,2");
+    const ref = makeLocalFileRef(handle, "mock.csv");
+    const tab = {
+      ...(await createTabFromFileRef(ref, "tab-1")),
+      autoRefresh: false
+    };
+
+    handle.externalWrite("A,B\n9,9");
+    const diskVersion = await ref.getVersion!();
+    const paused = await applyDiskVersionChange(tab, diskVersion);
+
+    expect(paused.data[1]).toEqual(["1", "2"]);
+    expect(paused.externalChanged).toBe(true);
+    expect(paused.latestDiskVersion).toEqual(diskVersion);
+  });
+
   it("checks the disk version again before save", async () => {
     const handle = new MockFileHandle("A,B\n1,2");
     const ref = makeLocalFileRef(handle, "mock.csv");

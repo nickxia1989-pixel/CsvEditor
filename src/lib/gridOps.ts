@@ -15,8 +15,14 @@ export function insertRows(data: CsvMatrix, atRow: number, count: number): CsvMa
 }
 
 export function deleteRows(data: CsvMatrix, startRow: number, endRow: number): CsvMatrix {
-  const range = normalizeRange(startRow, endRow, 0, Math.max(0, data.length - 1));
   const width = Math.max(1, maxColumnCount(data));
+  if (data.length === 0) {
+    return [Array.from({ length: width }, () => "")];
+  }
+  const range = intersectRange(startRow, endRow, 0, data.length - 1);
+  if (!range) {
+    return data.map((row) => [...row]);
+  }
   const next = data.filter((_, row) => row < range.start || row > range.end);
   return next.length > 0 ? next : [Array.from({ length: width }, () => "")];
 }
@@ -40,10 +46,19 @@ export function insertColumns(data: CsvMatrix, atCol: number, count: number): Cs
 }
 
 export function deleteColumns(data: CsvMatrix, startCol: number, endCol: number): CsvMatrix {
-  const width = Math.max(1, maxColumnCount(data));
-  const range = normalizeRange(startCol, endCol, 0, width - 1);
+  const width = maxColumnCount(data);
+  if (width === 0) {
+    return [[""]];
+  }
+  const range = intersectRange(startCol, endCol, 0, width - 1);
+  if (!range) {
+    return data.length > 0 ? data.map((row) => [...row]) : [[""]];
+  }
   const rows = data.length > 0 ? data : [[]];
-  return rows.map((row) => [...row.slice(0, range.start), ...row.slice(range.end + 1)]);
+  return rows.map((row) => {
+    const next = [...row.slice(0, range.start), ...row.slice(range.end + 1)];
+    return next.length > 0 ? next : [""];
+  });
 }
 
 export function shiftLockedCellsForInsertedRows(lockedCells: string[], atRow: number, count: number): string[] {
@@ -136,6 +151,18 @@ function normalizeRange(start: number, end: number, min: number, max: number): {
   return {
     start: clamp(Math.min(start, end), min, max),
     end: clamp(Math.max(start, end), min, max)
+  };
+}
+
+function intersectRange(start: number, end: number, min: number, max: number): { start: number; end: number } | null {
+  const normalizedStart = Math.min(start, end);
+  const normalizedEnd = Math.max(start, end);
+  if (normalizedEnd < min || normalizedStart > max) {
+    return null;
+  }
+  return {
+    start: clamp(normalizedStart, min, max),
+    end: clamp(normalizedEnd, min, max)
   };
 }
 

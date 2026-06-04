@@ -254,6 +254,8 @@ export function GridEditor({
   const selectedLocked = lockedSet.has(cellKey(tab.selection.focusRow, tab.selection.focusCol));
   const rangeLocked = rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
   const findAvailable = tab.findQuery.trim().length > 0;
+  const realEndRow = Math.max(0, tab.data.length - 1);
+  const realEndCol = Math.max(0, maxColumnCount(tab.data) - 1);
 
   const commitEditing = () => {
     if (!editing) {
@@ -562,6 +564,8 @@ export function GridEditor({
 
       <div
         className="grid-viewport"
+        role="grid"
+        aria-label="CSV grid"
         ref={viewportRef}
         tabIndex={0}
         onScroll={(event) => {
@@ -583,11 +587,18 @@ export function GridEditor({
         <div className="grid-canvas" style={{ width: totalWidth, height: totalHeight }}>
           <div
             className="grid-corner"
+            role="button"
+            aria-label="Select all cells"
             style={{
               width: rowHeaderWidth,
               height: headerHeight,
               left: viewport.scrollLeft,
               top: viewport.scrollTop
+            }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onSelectionChange({ anchorRow: 0, anchorCol: 0, focusRow: realEndRow, focusCol: realEndCol });
+              viewportRef.current?.focus();
             }}
           />
 
@@ -598,11 +609,18 @@ export function GridEditor({
               <div
                 key={`h-${col}`}
                 className={`column-header ${frozen ? "frozen" : ""}`}
+                role="columnheader"
+                aria-label={`Column ${columnName(col)}`}
                 style={{
                   left,
                   top: viewport.scrollTop,
                   width: colWidths[col],
                   height: headerHeight
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  onSelectionChange({ anchorRow: 0, anchorCol: col, focusRow: realEndRow, focusCol: col });
+                  viewportRef.current?.focus();
                 }}
               >
                 {columnName(col)}
@@ -628,11 +646,18 @@ export function GridEditor({
               <div
                 key={`r-${row}`}
                 className={`row-header ${frozen ? "frozen" : ""}`}
+                role="rowheader"
+                aria-label={`Row ${row + 1}`}
                 style={{
                   left: viewport.scrollLeft,
                   top: frozen ? viewport.scrollTop + headerHeight + row * rowHeight : headerHeight + row * rowHeight,
                   width: rowHeaderWidth,
                   height: rowHeight
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  onSelectionChange({ anchorRow: row, anchorCol: 0, focusRow: row, focusCol: realEndCol });
+                  viewportRef.current?.focus();
                 }}
               >
                 {row + 1}

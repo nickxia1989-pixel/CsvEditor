@@ -113,7 +113,11 @@ export function matrixToTsv(
 }
 
 export function parseTsv(text: string): string[][] {
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").map((line) => line.split("\t"));
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  if (lines.length > 1 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  return lines.map((line) => line.split("\t"));
 }
 
 export function maxColumnCount(data: CsvMatrix): number {

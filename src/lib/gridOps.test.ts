@@ -38,6 +38,19 @@ describe("grid operations", () => {
     expect(deleteColumns(data, 0, 0)).toEqual([["B"], ["2"]]);
   });
 
+  it("does not delete real data when the selected virtual range is outside the matrix", () => {
+    const data = [
+      ["A", "B"],
+      ["1", "2"]
+    ];
+    expect(deleteRows(data, 20, 20)).toEqual(data);
+    expect(deleteColumns(data, 20, 20)).toEqual(data);
+  });
+
+  it("keeps one blank column when deleting the last real column", () => {
+    expect(deleteColumns([["A"], ["1"]], 0, 0)).toEqual([[""], [""]]);
+  });
+
   it("shifts locked cells when rows and columns are inserted", () => {
     expect(shiftLockedCellsForInsertedRows(["0:0", "2:1"], 1, 2)).toEqual(["0:0", "4:1"]);
     expect(shiftLockedCellsForInsertedColumns(["0:0", "2:1"], 1, 2)).toEqual(["0:0", "2:3"]);

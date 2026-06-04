@@ -125,4 +125,93 @@ describe("App local directory flow", () => {
     expect(first.getText()).toContain("ID_A,Name");
     expect(second.getText()).toContain("ID_B,Name");
   });
+
+  it("does not dirty the tab when clearing an empty virtual cell", async () => {
+    const file = new MockFileHandle("blank-safe.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["blank-safe.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "blank-safe.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A5" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A5" }), { clientX: 80, clientY: 190 });
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "Delete" });
+
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+    expect(screen.getByText("2 行 / 2 列 / UTF-8")).toBeInTheDocument();
+  });
+
+  it("does not delete the last real row when deleting a virtual blank row", async () => {
+    const file = new MockFileHandle("delete-safe.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["delete-safe.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "delete-safe.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A5" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A5" }), { clientX: 80, clientY: 190 });
+    fireEvent.click(screen.getByRole("button", { name: "删行" }));
+
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+    expect(screen.getByText("2 行 / 2 列 / UTF-8")).toBeInTheDocument();
+  });
+
+  it("adds a new column at the max width for ragged rows", async () => {
+    const file = new MockFileHandle("ragged.csv", "A,B\n1");
+    const root = new MockDirectoryHandle("Tables", [["ragged.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "ragged.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+
+    fireEvent.click(screen.getByRole("button", { name: "增列" }));
+    await waitFor(() => expect(screen.getByText("未保存 1")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("A,B,\n1,,");
+  });
+
+  it("prevents editing and clearing a locked selected cell", async () => {
+    const file = new MockFileHandle("locked.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["locked.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "locked.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+
+    fireEvent.click(screen.getByRole("button", { name: "锁定选区" }));
+
+    expect(screen.getByLabelText("Selected cell value")).toBeDisabled();
+    expect(screen.getByText("已锁定")).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "Delete" });
+
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
+  });
 });

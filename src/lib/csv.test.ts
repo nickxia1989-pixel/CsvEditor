@@ -48,6 +48,13 @@ describe("csv helpers", () => {
     ]);
   });
 
+  it("does not create an extra row for a trailing TSV newline", () => {
+    expect(parseTsv("A\tB\nC\tD\n")).toEqual([
+      ["A", "B"],
+      ["C", "D"]
+    ]);
+  });
+
   it("serializes using the detected delimiter", () => {
     const text = unparseCsvData(
       [

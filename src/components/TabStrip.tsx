@@ -16,37 +16,38 @@ export function TabStrip({ tabs, activeTabId, onActivate, onClose }: TabStripPro
   return (
     <div className="tab-strip" role="tablist" aria-label="Open CSV tabs">
       {tabs.map((tab) => (
-        <button
+        <div
           key={tab.id}
           className={`tab ${tab.id === activeTabId ? "active" : ""} ${tab.dirty ? "dirty" : ""}`}
           onClick={() => onActivate(tab.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onActivate(tab.id);
+            }
+          }}
           title={tab.path}
           role="tab"
+          tabIndex={0}
           aria-selected={tab.id === activeTabId}
+          aria-label={`${tab.name}${tab.dirty ? "未保存" : ""}${tab.externalChanged ? "磁盘冲突" : ""}`}
         >
           <FileText size={14} />
           <span className="tab-name">{tab.name}</span>
           {tab.externalChanged ? <AlertTriangle size={14} className="tab-alert" /> : null}
           {tab.dirty ? <span className="dirty-dot" aria-label="未保存" /> : null}
-          <span
+          <button
+            type="button"
             className="tab-close"
-            role="button"
-            tabIndex={0}
             onClick={(event) => {
               event.stopPropagation();
               onClose(tab.id);
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.stopPropagation();
-                onClose(tab.id);
-              }
-            }}
             aria-label={`关闭 ${tab.name}`}
           >
             <X size={13} />
-          </span>
-        </button>
+          </button>
+        </div>
       ))}
     </div>
   );
