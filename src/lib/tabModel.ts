@@ -26,6 +26,8 @@ export async function createTabFromFileRef(fileRef: CsvFileRef, id: string): Pro
     freezeRows: 0,
     freezeCols: 0,
     colWidths: {},
+    undoStack: [],
+    redoStack: [],
     status: "已打开"
   };
 }
@@ -43,6 +45,8 @@ export async function reloadTabFromFileRef(tab: CsvTab, status = "已从磁盘�
     latestDiskVersion: undefined,
     dirty: false,
     externalChanged: false,
+    undoStack: [],
+    redoStack: [],
     status
   };
 }

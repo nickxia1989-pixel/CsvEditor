@@ -38,6 +38,8 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
     freezeRows: 0,
     freezeCols: 0,
     colWidths: {},
+    undoStack: [],
+    redoStack: [],
     ...overrides
   };
 }
@@ -55,6 +57,10 @@ function renderGrid(tab = createTab()) {
     onSetColWidth: vi.fn(),
     onSetAutoRefresh: vi.fn(),
     onSetFindQuery: vi.fn(),
+    canUndo: tab.undoStack.length > 0,
+    canRedo: tab.redoStack.length > 0,
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
     onInsertRows: vi.fn(),
     onDeleteRows: vi.fn(),
     onInsertColumns: vi.fn(),
@@ -77,5 +83,22 @@ describe("GridEditor toolbar", () => {
     const props = renderGrid();
     fireEvent.click(screen.getByRole("button", { name: "自动热刷" }));
     expect(props.onSetAutoRefresh).toHaveBeenCalledWith(false);
+  });
+
+  it("fires undo and redo toolbar callbacks", () => {
+    const snapshot = {
+      data: [["old"]],
+      lockedCells: [],
+      selection: singleCellSelection(0, 0),
+      colWidths: {},
+      dirty: false
+    };
+    const props = renderGrid(createTab({ undoStack: [snapshot], redoStack: [snapshot] }));
+
+    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    fireEvent.click(screen.getByRole("button", { name: "重做" }));
+
+    expect(props.onUndo).toHaveBeenCalledTimes(1);
+    expect(props.onRedo).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Columns3, Lock, Minus, Pause, Play, Plus, Rows3, Search, Unlock } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Columns3,
+  Lock,
+  Minus,
+  Pause,
+  Play,
+  Plus,
+  Redo2,
+  Rows3,
+  Search,
+  Undo2,
+  Unlock
+} from "lucide-react";
 import {
   findCell,
   maxColumnCount,
@@ -29,6 +43,10 @@ type GridEditorProps = {
   onSetColWidth(col: number, width: number): void;
   onSetAutoRefresh(enabled: boolean): void;
   onSetFindQuery(query: string): void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo(): void;
+  onRedo(): void;
   onInsertRows(startRow: number, endRow: number): void;
   onDeleteRows(startRow: number, endRow: number): void;
   onInsertColumns(startCol: number, endCol: number): void;
@@ -62,6 +80,10 @@ export function GridEditor({
   onSetColWidth,
   onSetAutoRefresh,
   onSetFindQuery,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onInsertRows,
   onDeleteRows,
   onInsertColumns,
@@ -253,6 +275,22 @@ export function GridEditor({
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        onRedo();
+      } else {
+        onUndo();
+      }
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      onRedo();
+      return;
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
       event.preventDefault();
       await navigator.clipboard.writeText(
@@ -337,6 +375,12 @@ export function GridEditor({
       </div>
 
       <div className="grid-tools">
+        <button className="icon-button" onClick={onUndo} disabled={!canUndo} title="撤销">
+          <Undo2 size={15} />
+        </button>
+        <button className="icon-button" onClick={onRedo} disabled={!canRedo} title="重做">
+          <Redo2 size={15} />
+        </button>
         <button
           className="tool-button"
           onClick={() =>

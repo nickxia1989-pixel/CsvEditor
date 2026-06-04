@@ -30,7 +30,17 @@ export type CsvTab = {
   freezeRows: number;
   freezeCols: number;
   colWidths: Record<number, number>;
+  undoStack: CsvTabHistorySnapshot[];
+  redoStack: CsvTabHistorySnapshot[];
   status?: string;
+};
+
+export type CsvTabHistorySnapshot = {
+  data: CsvMatrix;
+  lockedCells: string[];
+  selection: CsvSelection;
+  colWidths: Record<number, number>;
+  dirty: boolean;
 };
 
 export type TreeNode = {
