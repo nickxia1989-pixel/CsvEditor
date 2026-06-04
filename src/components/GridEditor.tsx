@@ -44,6 +44,7 @@ type GridEditorProps = {
   onSetAutoRefresh(enabled: boolean): void;
   onSetFindQuery(query: string): void;
   onSetReplaceValue(value: string): void;
+  onSetStatus(status: string): void;
   onReplaceCurrent(): void;
   onReplaceAll(): void;
   canUndo: boolean;
@@ -84,6 +85,7 @@ export function GridEditor({
   onSetAutoRefresh,
   onSetFindQuery,
   onSetReplaceValue,
+  onSetStatus,
   onReplaceCurrent,
   onReplaceAll,
   canUndo,
@@ -257,6 +259,13 @@ export function GridEditor({
   const realEndRow = Math.max(0, tab.data.length - 1);
   const realEndCol = Math.max(0, maxColumnCount(tab.data) - 1);
 
+  useEffect(() => {
+    setEditing(null);
+    setResizeState(null);
+    dragAnchorRef.current = null;
+    setDragging(false);
+  }, [tab.id]);
+
   const commitEditing = () => {
     if (!editing) {
       return;
@@ -364,15 +373,22 @@ export function GridEditor({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
       event.preventDefault();
-      await navigator.clipboard.writeText(
-        matrixToTsv(
-          tab.data,
-          selectionRange.startRow,
-          selectionRange.startCol,
-          selectionRange.endRow,
-          selectionRange.endCol
-        )
+      const text = matrixToTsv(
+        tab.data,
+        selectionRange.startRow,
+        selectionRange.startCol,
+        selectionRange.endRow,
+        selectionRange.endCol
       );
+      try {
+        if (!navigator.clipboard?.writeText) {
+          throw new Error("Clipboard API unavailable");
+        }
+        await navigator.clipboard.writeText(text);
+        onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
+      } catch {
+        onSetStatus("复制失败：浏览器未允许剪贴板写入");
+      }
       return;
     }
 
@@ -416,6 +432,7 @@ export function GridEditor({
       return;
     }
     if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
       beginEdit(tab.selection.focusRow, tab.selection.focusCol, event.key);
     }
   };
@@ -747,6 +764,7 @@ export function GridEditor({
         </span>
         <span>选区 {selectionRange.endRow - selectionRange.startRow + 1} x {selectionRange.endCol - selectionRange.startCol + 1}</span>
         <span>冻结 {tab.freezeRows} 行 / {tab.freezeCols} 列</span>
+        <span>{tab.status ?? "就绪"}</span>
       </div>
     </section>
   );

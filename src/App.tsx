@@ -193,7 +193,7 @@ export function App() {
         patchTab(id, (current) => ({
           ...reloaded,
           id: current.id,
-          selection: current.selection,
+          selection: clampSelectionToData(current.selection, reloaded.data),
           lockedCells: current.lockedCells,
           zoom: current.zoom,
           freezeRows: current.freezeRows,
@@ -373,7 +373,7 @@ export function App() {
               return {
                 ...nextTab,
                 id: current.id,
-                selection: current.selection,
+                selection: clampSelectionToData(current.selection, nextTab.data),
                 lockedCells: current.lockedCells,
                 zoom: current.zoom,
                 freezeRows: current.freezeRows,
@@ -595,6 +595,7 @@ export function App() {
             }
             onSetFindQuery={(findQuery) => updateActiveTab((tab) => ({ ...tab, findQuery }))}
             onSetReplaceValue={(replaceValue) => updateActiveTab((tab) => ({ ...tab, replaceValue }))}
+            onSetStatus={(status) => updateActiveTab((tab) => ({ ...tab, status }))}
             onReplaceCurrent={() =>
               updateActiveTab((tab) => {
                 const query = tab.findQuery.trim();
@@ -768,4 +769,22 @@ function createTabId(): string {
     return crypto.randomUUID();
   }
   return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function clampSelectionToData(selection: CsvTab["selection"], data: CsvTab["data"]): CsvTab["selection"] {
+  const maxRow = Math.max(0, data.length - 1);
+  const maxCol = Math.max(0, maxColumnCount(data) - 1);
+  return {
+    anchorRow: clamp(selection.anchorRow, 0, maxRow),
+    anchorCol: clamp(selection.anchorCol, 0, maxCol),
+    focusRow: clamp(selection.focusRow, 0, maxRow),
+    focusCol: clamp(selection.focusCol, 0, maxCol)
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }

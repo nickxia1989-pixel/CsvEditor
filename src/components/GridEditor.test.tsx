@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GridEditor } from "./GridEditor";
 import type { CsvTab } from "../types";
 import { singleCellSelection } from "../types";
@@ -46,8 +46,8 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
   };
 }
 
-function renderGrid(tab = createTab()) {
-  const props = {
+function createGridProps(tab = createTab()) {
+  return {
     tab,
     onSelectionChange: vi.fn(),
     onSetCell: vi.fn(),
@@ -60,6 +60,7 @@ function renderGrid(tab = createTab()) {
     onSetAutoRefresh: vi.fn(),
     onSetFindQuery: vi.fn(),
     onSetReplaceValue: vi.fn(),
+    onSetStatus: vi.fn(),
     onReplaceCurrent: vi.fn(),
     onReplaceAll: vi.fn(),
     canUndo: tab.undoStack.length > 0,
@@ -73,9 +74,58 @@ function renderGrid(tab = createTab()) {
     onAddRow: vi.fn(),
     onAddColumn: vi.fn()
   };
+}
+
+function renderGrid(tab = createTab()) {
+  const props = createGridProps(tab);
   render(<GridEditor {...props} />);
   return props;
 }
+
+function renderGridWithResult(tab = createTab()) {
+  const props = createGridProps(tab);
+  const result = render(<GridEditor {...props} />);
+  return { ...result, props };
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(navigator, "clipboard");
+});
+
+describe("GridEditor editing workflow", () => {
+  it("copies the selected TSV range and reports copy status", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid();
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "c", ctrlKey: true });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ID"));
+    expect(props.onSetStatus).toHaveBeenCalledWith("已复制 1 x 1");
+  });
+
+  it("reports a copy failure when the browser clipboard API is unavailable", async () => {
+    const props = renderGrid();
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "c", ctrlKey: true });
+
+    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入"));
+  });
+
+  it("cancels inline editing when switching to another tab", () => {
+    const { container, props, rerender } = renderGridWithResult(createTab({ id: "tab-1" }));
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    expect(container.querySelector(".cell-editor")).toBeInTheDocument();
+
+    rerender(<GridEditor {...props} tab={createTab({ id: "tab-2", data: [["Other"]] })} />);
+
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+  });
+});
 
 describe("GridEditor toolbar", () => {
   it("jumps to the next matching cell from the find control", () => {

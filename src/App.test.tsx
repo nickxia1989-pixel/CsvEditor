@@ -41,6 +41,11 @@ class MockFileHandle implements BrowserFileHandle {
   getText(): string {
     return this.text;
   }
+
+  externalWrite(text: string): void {
+    this.text = text;
+    this.modified += 1;
+  }
 }
 
 class MockDirectoryHandle implements BrowserDirectoryHandle {
@@ -213,5 +218,30 @@ describe("App local directory flow", () => {
 
     expect(screen.getByText("未保存 0")).toBeInTheDocument();
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
+  });
+
+  it("clamps the selection after refreshing to a smaller disk version", async () => {
+    const file = new MockFileHandle("refresh-shrink.csv", "A,B\n1,2\n3,4");
+    const root = new MockDirectoryHandle("Tables", [["refresh-shrink.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "refresh-shrink.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B5" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B5" }), { clientX: 180, clientY: 190 });
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("");
+
+    file.externalWrite("Only\nRow");
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+
+    await waitFor(() => expect(screen.getByText("2 行 / 1 列 / UTF-8")).toBeInTheDocument());
+    expect(screen.getByText("A2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("Row");
   });
 });
