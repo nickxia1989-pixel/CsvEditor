@@ -17,10 +17,22 @@ import {
   writeCell
 } from "./lib/csv";
 import { canPickDirectory, pickDirectory, versionEquals, type CsvFileRef } from "./lib/fileRefs";
+import {
+  deleteColumns,
+  deleteRows,
+  hasLockedCellInColumns,
+  hasLockedCellInRows,
+  insertColumns,
+  insertRows,
+  shiftLockedCellsForDeletedColumns,
+  shiftLockedCellsForDeletedRows,
+  shiftLockedCellsForInsertedColumns,
+  shiftLockedCellsForInsertedRows
+} from "./lib/gridOps";
 import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion, reloadTabFromFileRef } from "./lib/tabModel";
 import { createLocalRoot, loadLocalChildren, loadSampleTree, updateNode } from "./lib/tree";
 import type { CsvTab, TreeNode } from "./types";
-import { cellKey, normalizeSelection } from "./types";
+import { cellKey, normalizeSelection, singleCellSelection } from "./types";
 
 const HOT_REFRESH_INTERVAL_MS = 2000;
 
@@ -492,6 +504,64 @@ export function App() {
               }))
             }
             onSetFindQuery={(findQuery) => updateActiveTab((tab) => ({ ...tab, findQuery }))}
+            onInsertRows={(startRow, endRow) =>
+              updateActiveTab((tab) => {
+                const count = endRow - startRow + 1;
+                return {
+                  ...tab,
+                  data: insertRows(tab.data, startRow, count),
+                  lockedCells: shiftLockedCellsForInsertedRows(tab.lockedCells, startRow, count),
+                  selection: singleCellSelection(startRow, tab.selection.focusCol),
+                  dirty: true,
+                  status: `已插入 ${count} 行`
+                };
+              })
+            }
+            onDeleteRows={(startRow, endRow) =>
+              updateActiveTab((tab) => {
+                if (hasLockedCellInRows(tab.lockedCells, startRow, endRow)) {
+                  return { ...tab, status: "选中行包含锁定格，不能删除" };
+                }
+                const nextData = deleteRows(tab.data, startRow, endRow);
+                const nextRow = Math.min(startRow, Math.max(0, nextData.length - 1));
+                return {
+                  ...tab,
+                  data: nextData,
+                  lockedCells: shiftLockedCellsForDeletedRows(tab.lockedCells, startRow, endRow),
+                  selection: singleCellSelection(nextRow, tab.selection.focusCol),
+                  dirty: true,
+                  status: `已删除 ${endRow - startRow + 1} 行`
+                };
+              })
+            }
+            onInsertColumns={(startCol, endCol) =>
+              updateActiveTab((tab) => {
+                const count = endCol - startCol + 1;
+                return {
+                  ...tab,
+                  data: insertColumns(tab.data, startCol, count),
+                  lockedCells: shiftLockedCellsForInsertedColumns(tab.lockedCells, startCol, count),
+                  selection: singleCellSelection(tab.selection.focusRow, startCol),
+                  dirty: true,
+                  status: `已插入 ${count} 列`
+                };
+              })
+            }
+            onDeleteColumns={(startCol, endCol) =>
+              updateActiveTab((tab) => {
+                if (hasLockedCellInColumns(tab.lockedCells, startCol, endCol)) {
+                  return { ...tab, status: "选中列包含锁定格，不能删除" };
+                }
+                return {
+                  ...tab,
+                  data: deleteColumns(tab.data, startCol, endCol),
+                  lockedCells: shiftLockedCellsForDeletedColumns(tab.lockedCells, startCol, endCol),
+                  selection: singleCellSelection(tab.selection.focusRow, startCol),
+                  dirty: true,
+                  status: `已删除 ${endCol - startCol + 1} 列`
+                };
+              })
+            }
             onAddRow={() =>
               updateActiveTab((tab) => ({
                 ...tab,

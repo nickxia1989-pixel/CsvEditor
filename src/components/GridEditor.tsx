@@ -29,6 +29,10 @@ type GridEditorProps = {
   onSetColWidth(col: number, width: number): void;
   onSetAutoRefresh(enabled: boolean): void;
   onSetFindQuery(query: string): void;
+  onInsertRows(startRow: number, endRow: number): void;
+  onDeleteRows(startRow: number, endRow: number): void;
+  onInsertColumns(startCol: number, endCol: number): void;
+  onDeleteColumns(startCol: number, endCol: number): void;
   onAddRow(): void;
   onAddColumn(): void;
 };
@@ -58,6 +62,10 @@ export function GridEditor({
   onSetColWidth,
   onSetAutoRefresh,
   onSetFindQuery,
+  onInsertRows,
+  onDeleteRows,
+  onInsertColumns,
+  onDeleteColumns,
   onAddRow,
   onAddColumn
 }: GridEditorProps) {
@@ -374,6 +382,22 @@ export function GridEditor({
           <Plus size={15} />
         </button>
         <span className="zoom-label">{Math.round(tab.zoom * 100)}%</span>
+        <button className="tool-button" onClick={() => onInsertRows(selectionRange.startRow, selectionRange.endRow)}>
+          <Plus size={15} />
+          插行
+        </button>
+        <button className="tool-button" onClick={() => onDeleteRows(selectionRange.startRow, selectionRange.endRow)}>
+          <Minus size={15} />
+          删行
+        </button>
+        <button className="tool-button" onClick={() => onInsertColumns(selectionRange.startCol, selectionRange.endCol)}>
+          <Plus size={15} />
+          插列
+        </button>
+        <button className="tool-button" onClick={() => onDeleteColumns(selectionRange.startCol, selectionRange.endCol)}>
+          <Minus size={15} />
+          删列
+        </button>
         <button className="tool-button" onClick={onAddRow}>
           增行
         </button>

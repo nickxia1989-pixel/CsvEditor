@@ -55,6 +55,10 @@ function renderGrid(tab = createTab()) {
     onSetColWidth: vi.fn(),
     onSetAutoRefresh: vi.fn(),
     onSetFindQuery: vi.fn(),
+    onInsertRows: vi.fn(),
+    onDeleteRows: vi.fn(),
+    onInsertColumns: vi.fn(),
+    onDeleteColumns: vi.fn(),
     onAddRow: vi.fn(),
     onAddColumn: vi.fn()
   };
