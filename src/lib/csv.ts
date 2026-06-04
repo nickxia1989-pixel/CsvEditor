@@ -5,6 +5,7 @@ export type ParsedCsv = {
   data: CsvMatrix;
   delimiter: string;
   newline: string;
+  hasBom: boolean;
 };
 
 export function detectNewline(text: string): string {
@@ -14,7 +15,9 @@ export function detectNewline(text: string): string {
 }
 
 export function parseCsvText(text: string): ParsedCsv {
-  const parsed = Papa.parse<string[]>(text, {
+  const hasBom = text.startsWith("\uFEFF");
+  const normalizedText = hasBom ? text.slice(1) : text;
+  const parsed = Papa.parse<string[]>(normalizedText, {
     delimiter: "",
     skipEmptyLines: false,
     dynamicTyping: false
@@ -26,7 +29,7 @@ export function parseCsvText(text: string): ParsedCsv {
   }
 
   const data = parsed.data.map((row) => row.map((value) => value ?? ""));
-  if (text.length > 0 && /(\r\n|\n|\r)$/.test(text)) {
+  if (normalizedText.length > 0 && /(\r\n|\n|\r)$/.test(normalizedText)) {
     const last = data[data.length - 1];
     if (last && last.length === 1 && last[0] === "") {
       data.pop();
@@ -36,15 +39,17 @@ export function parseCsvText(text: string): ParsedCsv {
   return {
     data,
     delimiter: parsed.meta.delimiter || ",",
-    newline: detectNewline(text)
+    newline: detectNewline(normalizedText),
+    hasBom
   };
 }
 
-export function unparseCsvData(data: CsvMatrix, delimiter: string, newline: string): string {
-  return Papa.unparse(data, {
+export function unparseCsvData(data: CsvMatrix, delimiter: string, newline: string, hasBom = false): string {
+  const text = Papa.unparse(data, {
     delimiter: delimiter || ",",
     newline: newline || "\n"
   });
+  return hasBom ? `\uFEFF${text}` : text;
 }
 
 export function readCell(data: CsvMatrix, row: number, col: number): string {

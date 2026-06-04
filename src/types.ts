@@ -17,6 +17,7 @@ export type CsvTab = {
   data: CsvMatrix;
   delimiter: string;
   newline: string;
+  hasBom: boolean;
   version: CsvVersion;
   latestDiskVersion?: CsvVersion;
   dirty: boolean;

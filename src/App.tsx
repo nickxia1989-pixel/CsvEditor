@@ -196,7 +196,7 @@ export function App() {
         }
       }
       try {
-        const text = unparseCsvData(tab.data, tab.delimiter, tab.newline);
+        const text = unparseCsvData(tab.data, tab.delimiter, tab.newline, tab.hasBom);
         const version = await tab.fileRef.write(text);
         patchTab(id, (current) => ({
           ...current,

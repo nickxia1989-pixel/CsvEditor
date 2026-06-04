@@ -56,4 +56,11 @@ describe("csv helpers", () => {
     );
     expect(text).toBe("A;B\n1;2");
   });
+
+  it("strips BOM while parsing and restores it when serializing", () => {
+    const parsed = parseCsvText("\uFEFFA,B\n1,2");
+    expect(parsed.hasBom).toBe(true);
+    expect(parsed.data[0][0]).toBe("A");
+    expect(unparseCsvData(parsed.data, parsed.delimiter, parsed.newline, parsed.hasBom).startsWith("\uFEFF")).toBe(true);
+  });
 });
