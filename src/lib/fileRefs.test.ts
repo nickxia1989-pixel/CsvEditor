@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeLocalFileRef, versionEquals, type BrowserFileHandle } from "./fileRefs";
-import { applyDiskVersionChange, createTabFromFileRef } from "./tabModel";
+import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion } from "./tabModel";
 
 class MockFileHandle implements BrowserFileHandle {
   kind = "file" as const;
@@ -86,5 +86,17 @@ describe("file refs and hot refresh model", () => {
     expect(conflicted.data[1]).toEqual(["local", "edit"]);
     expect(conflicted.externalChanged).toBe(true);
     expect(conflicted.latestDiskVersion).toEqual(diskVersion);
+  });
+
+  it("checks the disk version again before save", async () => {
+    const handle = new MockFileHandle("A,B\n1,2");
+    const ref = makeLocalFileRef(handle, "mock.csv");
+    const tab = await createTabFromFileRef(ref, "tab-1");
+
+    expect(await getSaveConflictVersion(tab)).toBeNull();
+
+    handle.externalWrite("A,B\n9,9");
+    const conflictVersion = await getSaveConflictVersion(tab);
+    expect(conflictVersion).toEqual(await ref.getVersion!());
   });
 });

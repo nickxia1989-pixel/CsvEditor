@@ -63,3 +63,12 @@ export async function applyDiskVersionChange(tab: CsvTab, diskVersion: CsvVersio
     status: "磁盘有新版本"
   };
 }
+
+export async function getSaveConflictVersion(tab: CsvTab): Promise<CsvVersion | null> {
+  if (!tab.fileRef.getVersion) {
+    return tab.externalChanged ? tab.latestDiskVersion ?? tab.version : null;
+  }
+
+  const diskVersion = await tab.fileRef.getVersion();
+  return versionEquals(tab.version, diskVersion) ? null : diskVersion;
+}

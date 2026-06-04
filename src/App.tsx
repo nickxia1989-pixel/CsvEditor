@@ -17,7 +17,7 @@ import {
   writeCell
 } from "./lib/csv";
 import { canPickDirectory, pickDirectory, versionEquals, type CsvFileRef } from "./lib/fileRefs";
-import { applyDiskVersionChange, createTabFromFileRef, reloadTabFromFileRef } from "./lib/tabModel";
+import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion, reloadTabFromFileRef } from "./lib/tabModel";
 import { createLocalRoot, loadLocalChildren, loadSampleTree, updateNode } from "./lib/tree";
 import type { CsvTab, TreeNode } from "./types";
 import { cellKey, normalizeSelection } from "./types";
@@ -200,13 +200,20 @@ export function App() {
         notify("warning", "当前文件是只读来源，不能保存。");
         return;
       }
-      if (tab.externalChanged) {
-        const confirmed = window.confirm(`${tab.name} 在磁盘上已变化。保存会覆盖磁盘版本，是否继续？`);
-        if (!confirmed) {
-          return;
-        }
-      }
       try {
+        const conflictVersion = await getSaveConflictVersion(tab);
+        if (conflictVersion) {
+          patchTab(id, (current) => ({
+            ...current,
+            latestDiskVersion: conflictVersion,
+            externalChanged: true,
+            status: "保存前发现磁盘新版本"
+          }));
+          const confirmed = window.confirm(`${tab.name} 在磁盘上已变化。保存会覆盖磁盘版本，是否继续？`);
+          if (!confirmed) {
+            return;
+          }
+        }
         const text = unparseCsvData(tab.data, tab.delimiter, tab.newline, tab.hasBom);
         const version = await tab.fileRef.write(text);
         patchTab(id, (current) => ({
