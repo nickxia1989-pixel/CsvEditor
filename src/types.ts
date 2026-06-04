@@ -18,6 +18,7 @@ export type CsvTab = {
   delimiter: string;
   newline: string;
   hasBom: boolean;
+  encoding: string;
   version: CsvVersion;
   latestDiskVersion?: CsvVersion;
   dirty: boolean;

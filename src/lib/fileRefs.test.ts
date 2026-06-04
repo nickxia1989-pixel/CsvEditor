@@ -17,7 +17,8 @@ class MockFileHandle implements BrowserFileHandle {
       name: this.name,
       lastModified: this.modified,
       size: new Blob([this.text]).size,
-      text: async () => this.text
+      text: async () => this.text,
+      arrayBuffer: async () => new TextEncoder().encode(this.text).buffer
     } as File;
   }
 

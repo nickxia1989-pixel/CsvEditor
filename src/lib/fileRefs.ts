@@ -1,3 +1,5 @@
+import { decodeTextBuffer } from "./textDecode";
+
 export type CsvVersion = {
   lastModified: number;
   size: number;
@@ -6,6 +8,7 @@ export type CsvVersion = {
 export type OpenedFile = {
   text: string;
   version: CsvVersion;
+  encoding?: string;
 };
 
 export interface BrowserFileHandle {
@@ -83,8 +86,10 @@ export function makeLocalFileRef(handle: BrowserFileHandle, path: string): CsvFi
     writable: true,
     async read() {
       const file = await handle.getFile();
+      const decoded = decodeTextBuffer(await file.arrayBuffer());
       return {
-        text: await file.text(),
+        text: decoded.text,
+        encoding: decoded.encoding,
         version: {
           lastModified: file.lastModified,
           size: file.size
@@ -124,13 +129,15 @@ export function makeSampleFileRef(name: string, path: string, url: string): CsvF
       if (!response.ok) {
         throw new Error(`样例文件读取失败: ${response.status}`);
       }
-      const text = await response.text();
+      const decoded = decodeTextBuffer(await response.arrayBuffer());
+      const text = decoded.text;
       loadedVersion = {
         lastModified: Date.now(),
         size: new Blob([text]).size
       };
       return {
         text,
+        encoding: decoded.encoding,
         version: loadedVersion
       };
     },

@@ -231,12 +231,19 @@ export function App() {
             return;
           }
         }
+        if (tab.encoding !== "utf-8") {
+          const confirmed = window.confirm(`${tab.name} 当前按 ${tab.encoding.toUpperCase()} 解码。浏览器保存会写成 UTF-8，是否继续？`);
+          if (!confirmed) {
+            return;
+          }
+        }
         const text = unparseCsvData(tab.data, tab.delimiter, tab.newline, tab.hasBom);
         const version = await tab.fileRef.write(text);
         patchTab(id, (current) =>
           clearHistory({
             ...current,
             version,
+            encoding: "utf-8",
             latestDiskVersion: undefined,
             dirty: false,
             externalChanged: false,
@@ -359,7 +366,7 @@ export function App() {
   );
 
   const selectedStats = activeTab
-    ? `${activeTab.data.length} 行 / ${maxColumnCount(activeTab.data)} 列`
+    ? `${activeTab.data.length} 行 / ${maxColumnCount(activeTab.data)} 列 / ${activeTab.encoding.toUpperCase()}`
     : "未打开文件";
 
   return (
