@@ -13,6 +13,9 @@ import { GridEditor } from "./components/GridEditor";
 import { TabStrip } from "./components/TabStrip";
 import {
   maxColumnCount,
+  replaceAllCellText,
+  replaceCellText,
+  readCell,
   unparseCsvData,
   writeCell
 } from "./lib/csv";
@@ -193,7 +196,8 @@ export function App() {
           freezeCols: current.freezeCols,
           colWidths: current.colWidths,
           autoRefresh: current.autoRefresh,
-          findQuery: current.findQuery
+          findQuery: current.findQuery,
+          replaceValue: current.replaceValue
         }));
         notify("success", `已刷新 ${tab.name}`);
       } catch (error) {
@@ -326,7 +330,10 @@ export function App() {
                 zoom: current.zoom,
                 freezeRows: current.freezeRows,
                 freezeCols: current.freezeCols,
-                colWidths: current.colWidths
+                colWidths: current.colWidths,
+                autoRefresh: current.autoRefresh,
+                findQuery: current.findQuery,
+                replaceValue: current.replaceValue
               };
             });
           }
@@ -511,6 +518,46 @@ export function App() {
               }))
             }
             onSetFindQuery={(findQuery) => updateActiveTab((tab) => ({ ...tab, findQuery }))}
+            onSetReplaceValue={(replaceValue) => updateActiveTab((tab) => ({ ...tab, replaceValue }))}
+            onReplaceCurrent={() =>
+              updateActiveTab((tab) => {
+                const query = tab.findQuery.trim();
+                const { focusRow, focusCol } = tab.selection;
+                if (!query || tab.lockedCells.includes(cellKey(focusRow, focusCol))) {
+                  return tab;
+                }
+                if (!readCell(tab.data, focusRow, focusCol).toLowerCase().includes(query.toLowerCase())) {
+                  return { ...tab, status: "当前格没有匹配内容" };
+                }
+                const base = pushUndo(tab);
+                return {
+                  ...base,
+                  data: replaceCellText(base.data, focusRow, focusCol, query, base.replaceValue),
+                  dirty: true,
+                  status: "已替换当前匹配"
+                };
+              })
+            }
+            onReplaceAll={() =>
+              updateActiveTab((tab) => {
+                const result = replaceAllCellText(
+                  tab.data,
+                  tab.findQuery,
+                  tab.replaceValue,
+                  new Set(tab.lockedCells)
+                );
+                if (result.count === 0) {
+                  return { ...tab, status: "没有可替换的匹配内容" };
+                }
+                const base = pushUndo(tab);
+                return {
+                  ...base,
+                  data: result.data,
+                  dirty: true,
+                  status: `已替换 ${result.count} 处`
+                };
+              })
+            }
             canUndo={activeTab.undoStack.length > 0}
             canRedo={activeTab.redoStack.length > 0}
             onUndo={() => updateActiveTab(undoTab)}

@@ -155,3 +155,62 @@ export function findCell(
 
   return null;
 }
+
+export function replaceCellText(data: CsvMatrix, row: number, col: number, query: string, replacement: string): CsvMatrix {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return data;
+  }
+  const current = readCell(data, row, col);
+  const index = current.toLowerCase().indexOf(normalizedQuery.toLowerCase());
+  if (index < 0) {
+    return data;
+  }
+  return writeCell(
+    data,
+    row,
+    col,
+    `${current.slice(0, index)}${replacement}${current.slice(index + normalizedQuery.length)}`
+  );
+}
+
+export function replaceAllCellText(
+  data: CsvMatrix,
+  query: string,
+  replacement: string,
+  lockedCells: Set<string>
+): { data: CsvMatrix; count: number } {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return { data, count: 0 };
+  }
+
+  let next = data;
+  let count = 0;
+  const lowerQuery = normalizedQuery.toLowerCase();
+  for (let row = 0; row < data.length; row += 1) {
+    for (let col = 0; col < data[row].length; col += 1) {
+      if (lockedCells.has(`${row}:${col}`)) {
+        continue;
+      }
+      const current = readCell(next, row, col);
+      const lowerCurrent = current.toLowerCase();
+      if (!lowerCurrent.includes(lowerQuery)) {
+        continue;
+      }
+      let cursor = 0;
+      let replaced = "";
+      let matchIndex = lowerCurrent.indexOf(lowerQuery, cursor);
+      while (matchIndex >= 0) {
+        replaced += `${current.slice(cursor, matchIndex)}${replacement}`;
+        cursor = matchIndex + normalizedQuery.length;
+        count += 1;
+        matchIndex = lowerCurrent.indexOf(lowerQuery, cursor);
+      }
+      replaced += current.slice(cursor);
+      next = writeCell(next, row, col, replaced);
+    }
+  }
+
+  return { data: next, count };
+}

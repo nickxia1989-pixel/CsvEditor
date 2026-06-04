@@ -43,6 +43,9 @@ type GridEditorProps = {
   onSetColWidth(col: number, width: number): void;
   onSetAutoRefresh(enabled: boolean): void;
   onSetFindQuery(query: string): void;
+  onSetReplaceValue(value: string): void;
+  onReplaceCurrent(): void;
+  onReplaceAll(): void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo(): void;
@@ -80,6 +83,9 @@ export function GridEditor({
   onSetColWidth,
   onSetAutoRefresh,
   onSetFindQuery,
+  onSetReplaceValue,
+  onReplaceCurrent,
+  onReplaceAll,
   canUndo,
   canRedo,
   onUndo,
@@ -462,11 +468,24 @@ export function GridEditor({
             placeholder="查找"
           />
         </label>
+        <label className="grid-search replace-box">
+          <input
+            value={tab.replaceValue}
+            onChange={(event) => onSetReplaceValue(event.target.value)}
+            placeholder="替换为"
+          />
+        </label>
         <button className="icon-button" onClick={() => runFind("previous")} disabled={!findAvailable} title="上一处">
           <ChevronUp size={15} />
         </button>
         <button className="icon-button" onClick={() => runFind("next")} disabled={!findAvailable} title="下一处">
           <ChevronDown size={15} />
+        </button>
+        <button className="tool-button" onClick={onReplaceCurrent} disabled={!findAvailable}>
+          替换
+        </button>
+        <button className="tool-button" onClick={onReplaceAll} disabled={!findAvailable}>
+          全部替换
         </button>
         <button
           className={`tool-button ${tab.autoRefresh ? "active-toggle" : ""}`}

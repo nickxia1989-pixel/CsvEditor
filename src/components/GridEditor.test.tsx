@@ -32,6 +32,7 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
     externalChanged: false,
     autoRefresh: true,
     findQuery: "wolf",
+    replaceValue: "fox",
     lockedCells: [],
     selection: singleCellSelection(0, 0),
     zoom: 1,
@@ -57,6 +58,9 @@ function renderGrid(tab = createTab()) {
     onSetColWidth: vi.fn(),
     onSetAutoRefresh: vi.fn(),
     onSetFindQuery: vi.fn(),
+    onSetReplaceValue: vi.fn(),
+    onReplaceCurrent: vi.fn(),
+    onReplaceAll: vi.fn(),
     canUndo: tab.undoStack.length > 0,
     canRedo: tab.redoStack.length > 0,
     onUndo: vi.fn(),
@@ -100,5 +104,15 @@ describe("GridEditor toolbar", () => {
 
     expect(props.onUndo).toHaveBeenCalledTimes(1);
     expect(props.onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires replace toolbar callbacks", () => {
+    const props = renderGrid();
+
+    fireEvent.click(screen.getByRole("button", { name: "替换" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部替换" }));
+
+    expect(props.onReplaceCurrent).toHaveBeenCalledTimes(1);
+    expect(props.onReplaceAll).toHaveBeenCalledTimes(1);
   });
 });

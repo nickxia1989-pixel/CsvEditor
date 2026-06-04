@@ -4,6 +4,8 @@ import {
   matrixToTsv,
   parseCsvText,
   parseTsv,
+  replaceAllCellText,
+  replaceCellText,
   readCell,
   unparseCsvData,
   writeCell
@@ -74,5 +76,27 @@ describe("csv helpers", () => {
     expect(findCell(data, "forest", 0, 0, "next")).toEqual({ row: 2, col: 1 });
     expect(findCell(data, "name", 0, 0, "previous")).toEqual({ row: 0, col: 1 });
     expect(findCell(data, "missing", 0, 0, "next")).toBeNull();
+  });
+
+  it("replaces a single matching cell", () => {
+    expect(replaceCellText([["Forest Wolf"]], 0, 0, "wolf", "Cat")).toEqual([["Forest Cat"]]);
+    expect(replaceCellText([["Forest Wolf"]], 0, 0, "missing", "Cat")).toEqual([["Forest Wolf"]]);
+  });
+
+  it("replaces all matches while skipping locked cells", () => {
+    const result = replaceAllCellText(
+      [
+        ["Wolf", "Wolf Wolf"],
+        ["Locked Wolf", "Cat"]
+      ],
+      "wolf",
+      "Fox",
+      new Set(["1:0"])
+    );
+    expect(result.count).toBe(3);
+    expect(result.data).toEqual([
+      ["Fox", "Fox Fox"],
+      ["Locked Wolf", "Cat"]
+    ]);
   });
 });

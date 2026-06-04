@@ -24,6 +24,7 @@ export type CsvTab = {
   externalChanged: boolean;
   autoRefresh: boolean;
   findQuery: string;
+  replaceValue: string;
   lockedCells: string[];
   selection: CsvSelection;
   zoom: number;
