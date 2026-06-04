@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "start:editor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-editor.ps1",
+    "stop:editor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-editor.ps1",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
     "check:tables": "node scripts/check-tables.mjs",
     "preview": "vite preview --host 127.0.0.1",

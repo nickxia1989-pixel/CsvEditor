@@ -4,6 +4,30 @@
 
 ## Run
 
+### One-click scripts
+
+双击根目录的 `start-editor.bat` 启动工具并打开浏览器。
+
+双击根目录的 `stop-editor.bat` 关闭后台服务。
+
+也可以用命令行：
+
+```powershell
+npm run start:editor
+npm run stop:editor
+```
+
+默认地址是 `http://127.0.0.1:5173/`。如果 5173 端口已被其他程序占用，可指定端口：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-editor.ps1 -Port 5180
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-editor.ps1 -Port 5180
+```
+
+启动日志写入 `dev-server.log`，错误日志写入 `dev-server.err`。
+
+### Manual
+
 ```bash
 npm install
 npm run dev
