@@ -346,6 +346,12 @@ button:disabled {
   color: #fff;
 }
 
+.toolbar-button.save:disabled {
+  border-color: var(--line);
+  background: var(--panel);
+  color: #203038;
+}
+
 .workspace-status {
   display: flex;
   align-items: center;

@@ -74,6 +74,14 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235726 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - Browser smoke at `http://127.0.0.1:5173/`: no console errors; rapid repeated opening of `monster.csv` kept one tab; closing an inactive `monster.csv` tab left `skill.csv` active.
 
+## Verification Run - 2026-06-04 Refresh Search View Controls
+
+- `npm test`: 8 files / 54 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235726 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: no console errors; sample tree loaded; duplicate `monster.csv` open kept one tab; find `wolf` jumped to `Forest Wolf`; replace changed it to `Forest Fox` and marked the tab dirty; read-only save stayed disabled with neutral styling; selecting `B2`, freezing, and zooming to 110% kept the grid viewport inside the workspace. Screenshot: `artifacts/csv-editor-refresh-find-freeze.png`.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

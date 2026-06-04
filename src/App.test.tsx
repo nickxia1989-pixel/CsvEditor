@@ -367,4 +367,110 @@ describe("App local directory flow", () => {
     expect(screen.getByText("A2")).toBeInTheDocument();
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("Row");
   });
+
+  it("keeps local dirty edits when manual refresh is cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const file = new MockFileHandle("refresh-cancel.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["refresh-cancel.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "refresh-cancel.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "LOCAL" } });
+    file.externalWrite("REMOTE,B\n1,2");
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+
+    expect(confirm).toHaveBeenCalledWith("refresh-cancel.csv 有未保存修改。刷新会丢弃这些修改，是否继续？");
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("LOCAL");
+    expect(screen.getByText("未保存 1")).toBeInTheDocument();
+  });
+
+  it("reloads a dirty tab when manual refresh is confirmed", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const file = new MockFileHandle("refresh-confirm.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["refresh-confirm.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "refresh-confirm.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "LOCAL" } });
+    file.externalWrite("REMOTE,B\n1,2");
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("REMOTE"));
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+  });
+
+  it("finds, replaces, replaces all, and saves the edited CSV", async () => {
+    const file = new MockFileHandle("replace.csv", "ID,Name\n1,Forest Wolf\n2,Forest Wolf");
+    const root = new MockDirectoryHandle("Tables", [["replace.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "replace.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+
+    fireEvent.change(screen.getByLabelText("查找"), { target: { value: "wolf" } });
+    fireEvent.change(screen.getByLabelText("替换为"), { target: { value: "Fox" } });
+    fireEvent.click(screen.getByRole("button", { name: "下一处" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("Forest Wolf"));
+
+    fireEvent.click(screen.getByRole("button", { name: "替换" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("Forest Fox"));
+
+    fireEvent.click(screen.getByRole("button", { name: "全部替换" }));
+    await waitFor(() => expect(screen.getByText("已替换 1 处")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("ID,Name\n1,Forest Fox\n2,Forest Fox");
+  });
+
+  it("updates freeze and zoom controls without disturbing the selected cell", async () => {
+    const file = new MockFileHandle("view-controls.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["view-controls.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "view-controls.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }), { clientX: 180, clientY: 80 });
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("2");
+
+    fireEvent.click(screen.getByRole("button", { name: "冻结至当前格" }));
+    expect(screen.getByText("冻结 1 行 / 1 列")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "放大格子" }));
+    expect(screen.getByText("110%")).toBeInTheDocument();
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("2");
+
+    fireEvent.click(screen.getByRole("button", { name: "取消冻结" }));
+    expect(screen.getByText("冻结 0 行 / 0 列")).toBeInTheDocument();
+  });
 });

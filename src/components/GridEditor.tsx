@@ -463,10 +463,10 @@ export function GridEditor({
       </div>
 
       <div className="grid-tools">
-        <button className="icon-button" onClick={onUndo} disabled={!canUndo} title="撤销">
+        <button className="icon-button" onClick={onUndo} disabled={!canUndo} title="撤销" aria-label="撤销">
           <Undo2 size={15} />
         </button>
-        <button className="icon-button" onClick={onRedo} disabled={!canRedo} title="重做">
+        <button className="icon-button" onClick={onRedo} disabled={!canRedo} title="重做" aria-label="重做">
           <Redo2 size={15} />
         </button>
         <button
@@ -497,7 +497,7 @@ export function GridEditor({
           <Columns3 size={15} />
           取消冻结
         </button>
-        <button className="icon-button" onClick={() => onSetZoom(Math.max(0.7, tab.zoom - 0.1))} title="缩小格子">
+        <button className="icon-button" onClick={() => onSetZoom(Math.max(0.7, tab.zoom - 0.1))} title="缩小格子" aria-label="缩小格子">
           <Minus size={15} />
         </button>
         <input
@@ -510,7 +510,7 @@ export function GridEditor({
           onChange={(event) => onSetZoom(Number(event.target.value))}
           aria-label="Cell zoom"
         />
-        <button className="icon-button" onClick={() => onSetZoom(Math.min(1.7, tab.zoom + 0.1))} title="放大格子">
+        <button className="icon-button" onClick={() => onSetZoom(Math.min(1.7, tab.zoom + 0.1))} title="放大格子" aria-label="放大格子">
           <Plus size={15} />
         </button>
         <span className="zoom-label">{Math.round(tab.zoom * 100)}%</span>
@@ -548,6 +548,7 @@ export function GridEditor({
               }
             }}
             placeholder="查找"
+            aria-label="查找"
           />
         </label>
         <label className="grid-search replace-box">
@@ -555,12 +556,13 @@ export function GridEditor({
             value={tab.replaceValue}
             onChange={(event) => onSetReplaceValue(event.target.value)}
             placeholder="替换为"
+            aria-label="替换为"
           />
         </label>
-        <button className="icon-button" onClick={() => runFind("previous")} disabled={!findAvailable} title="上一处">
+        <button className="icon-button" onClick={() => runFind("previous")} disabled={!findAvailable} title="上一处" aria-label="上一处">
           <ChevronUp size={15} />
         </button>
-        <button className="icon-button" onClick={() => runFind("next")} disabled={!findAvailable} title="下一处">
+        <button className="icon-button" onClick={() => runFind("next")} disabled={!findAvailable} title="下一处" aria-label="下一处">
           <ChevronDown size={15} />
         </button>
         <button className="tool-button" onClick={onReplaceCurrent} disabled={!findAvailable}>

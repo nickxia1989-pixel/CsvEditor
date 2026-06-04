@@ -106,7 +106,12 @@ export function DirectoryPane({
 
       <label className="search-box">
         <Search size={15} />
-        <input value={filter} onChange={(event) => onFilterChange(event.target.value)} placeholder="筛选已加载文件" />
+        <input
+          value={filter}
+          onChange={(event) => onFilterChange(event.target.value)}
+          placeholder="筛选已加载文件"
+          aria-label="筛选已加载文件"
+        />
       </label>
 
       <div
