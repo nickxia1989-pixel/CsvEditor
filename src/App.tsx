@@ -470,16 +470,18 @@ export function App() {
           {notice ? <span className={`notice ${notice.tone}`}>{notice.message}</span> : null}
         </div>
 
-        {activeTab?.externalChanged ? (
-          <div className="conflict-banner">
+        <div className={`conflict-banner ${activeTab?.externalChanged ? "" : "empty"}`} aria-hidden={!activeTab?.externalChanged}>
+          {activeTab?.externalChanged ? (
+            <>
             <AlertTriangle size={17} />
             <span>磁盘版本已变化。当前页签有未保存修改时不会自动覆盖。</span>
             <button onClick={() => activeTabId && void reloadTabFromDisk(activeTabId, true)}>
               <RotateCcw size={15} />
               丢弃并刷新
             </button>
-          </div>
-        ) : null}
+            </>
+          ) : null}
+        </div>
 
         {activeTab ? (
           <GridEditor

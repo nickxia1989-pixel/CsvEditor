@@ -98,6 +98,7 @@ export function GridEditor({
   onAddColumn
 }: GridEditorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
   const [viewport, setViewport] = useState<ViewportState>({
     width: 800,
     height: 500,
@@ -179,6 +180,22 @@ export function GridEditor({
   }, [onSetColWidth, resizeState, tab.zoom]);
 
   useEffect(() => {
+    if (!dragging) {
+      return undefined;
+    }
+    const stopDragging = () => {
+      dragAnchorRef.current = null;
+      setDragging(false);
+    };
+    window.addEventListener("pointerup", stopDragging, { once: true });
+    window.addEventListener("blur", stopDragging, { once: true });
+    return () => {
+      window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("blur", stopDragging);
+    };
+  }, [dragging]);
+
+  useEffect(() => {
     const viewportElement = viewportRef.current;
     if (!viewportElement) {
       return;
@@ -257,6 +274,52 @@ export function GridEditor({
       col,
       value: seed ?? readCell(tab.data, row, col)
     });
+  };
+
+  const updateDragSelection = (row: number, col: number) => {
+    const anchor = dragAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+    onSelectionChange({
+      anchorRow: anchor.row,
+      anchorCol: anchor.col,
+      focusRow: clamp(row, 0, rowCount - 1),
+      focusCol: clamp(col, 0, maxCols - 1)
+    });
+  };
+
+  const updateDragSelectionFromPointer = (clientX: number, clientY: number) => {
+    const element = viewportRef.current;
+    const anchor = dragAnchorRef.current;
+    if (!element || !anchor) {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const edgeSize = 34;
+    let nextScrollTop = element.scrollTop;
+    let nextScrollLeft = element.scrollLeft;
+
+    if (clientY > rect.bottom - edgeSize) {
+      nextScrollTop += rowHeight;
+    } else if (clientY < rect.top + edgeSize) {
+      nextScrollTop -= rowHeight;
+    }
+    if (clientX > rect.right - edgeSize) {
+      nextScrollLeft += DEFAULT_COL_WIDTH * tab.zoom;
+    } else if (clientX < rect.left + edgeSize) {
+      nextScrollLeft -= DEFAULT_COL_WIDTH * tab.zoom;
+    }
+
+    element.scrollTop = Math.max(0, nextScrollTop);
+    element.scrollLeft = Math.max(0, nextScrollLeft);
+
+    const offsetX = Math.max(0, clientX - rect.left + element.scrollLeft - rowHeaderWidth);
+    const offsetY = Math.max(0, clientY - rect.top + element.scrollTop - headerHeight);
+    const row = clamp(Math.floor(offsetY / rowHeight), 0, rowCount - 1);
+    const col = clamp(findColumnAtOffset(colOffsets, offsetX), 0, maxCols - 1);
+    updateDragSelection(row, col);
   };
 
   const moveSelection = (rowDelta: number, colDelta: number, extend: boolean) => {
@@ -511,7 +574,11 @@ export function GridEditor({
         }}
         onKeyDown={handleGridKeyDown}
         onPaste={handlePaste}
-        onPointerLeave={() => setDragging(false)}
+        onPointerMove={(event) => {
+          if (dragging) {
+            updateDragSelectionFromPointer(event.clientX, event.clientY);
+          }
+        }}
       >
         <div className="grid-canvas" style={{ width: totalWidth, height: totalHeight }}>
           <div
@@ -595,6 +662,8 @@ export function GridEditor({
                   className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${
                     locked ? "locked" : ""
                   } ${frozenRow || frozenCol ? "frozen" : ""}`}
+                  role="gridcell"
+                  aria-label={`${columnName(col)}${row + 1}`}
                   style={{
                     left,
                     top,
@@ -604,14 +673,13 @@ export function GridEditor({
                   }}
                   onPointerDown={(event) => {
                     event.preventDefault();
+                    dragAnchorRef.current = { row, col };
                     setDragging(true);
                     onSelectionChange(singleCellSelection(row, col));
                     viewportRef.current?.focus();
                   }}
                   onPointerEnter={() => {
-                    if (dragging) {
-                      onSelectionChange({ ...tab.selection, focusRow: row, focusCol: col });
-                    }
+                    updateDragSelection(row, col);
                   }}
                   onDoubleClick={() => beginEdit(row, col)}
                   title={locked ? "该格已锁定" : undefined}

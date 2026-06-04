@@ -42,12 +42,15 @@ button {
   display: grid;
   grid-template-columns: 310px minmax(0, 1fr);
   height: 100vh;
+  overflow: hidden;
   background: #e9eef0;
 }
 
 .directory-pane {
   display: flex;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   flex-direction: column;
   border-right: 1px solid var(--line);
   background: #fbfcfc;
@@ -155,17 +158,31 @@ button:disabled {
 }
 
 .tree-scroll {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 0 8px 12px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.tree-canvas {
+  position: relative;
+  min-height: 0;
+}
+
+.tree-row-slot {
+  position: absolute;
+  left: 0;
+  right: 0;
 }
 
 .tree-row {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 28px;
+  height: 28px;
   gap: 6px;
   border-radius: 5px;
   background: transparent;
@@ -194,6 +211,11 @@ button:disabled {
 }
 
 .tree-error {
+  display: block;
+  overflow: hidden;
+  padding-left: 30px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--danger);
   font-size: 12px;
 }
@@ -218,6 +240,7 @@ button:disabled {
   grid-template-rows: auto auto auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: #eef2f3;
 }
 
@@ -369,6 +392,15 @@ button:disabled {
   color: #70470a;
 }
 
+.conflict-banner.empty {
+  display: block;
+  min-height: 0;
+  height: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
+
 .conflict-banner span {
   flex: 1;
 }
@@ -385,6 +417,7 @@ button:disabled {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   padding: 10px;
   gap: 8px;
 }
@@ -439,7 +472,9 @@ button:disabled {
 
 .grid-tools {
   padding: 5px 7px;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  overflow: auto;
 }
 
 .tool-button {
@@ -496,6 +531,8 @@ button:disabled {
   position: relative;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--panel);

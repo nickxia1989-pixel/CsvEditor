@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GridEditor } from "./GridEditor";
 import type { CsvTab } from "../types";
@@ -115,5 +115,28 @@ describe("GridEditor toolbar", () => {
 
     expect(props.onReplaceCurrent).toHaveBeenCalledTimes(1);
     expect(props.onReplaceAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the original anchor while dragging a cell range", async () => {
+    const props = renderGrid();
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A1" }), {
+      clientX: 80,
+      clientY: 70,
+      pointerId: 1
+    });
+
+    await waitFor(() => {
+      expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(0, 0));
+    });
+
+    fireEvent.pointerEnter(screen.getByRole("gridcell", { name: "B2" }));
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 0,
+      anchorCol: 0,
+      focusRow: 1,
+      focusCol: 1
+    });
   });
 });
