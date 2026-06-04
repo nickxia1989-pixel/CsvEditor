@@ -109,6 +109,14 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; side bar widths clamped at `240px` and `520px`, plus a mid-width drag, without overlap; right toolbar stayed to one compact horizontal row and the grid viewport remained inside the workspace with about `529px` visible height. Find, edit, dirty marker, lock/unlock, zoom, and grid scroll all worked. Screenshot: `artifacts/csv-editor-resizable-compact-layout.png`.
 
+## Verification Run - 2026-06-04 Resize Lifecycle Review Fix
+
+- `npm test`: 8 files / 61 tests passed after adding regressions for immediate pointer release and non-primary pointer buttons on the sidebar resizer.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235899 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; clicking the divider did not leave resize mode active, dragging to `520px` and `240px` released cleanly, no sidebar/workspace overlap occurred, and grid scroll still worked. Screenshot: `artifacts/csv-editor-resize-review.png`.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

@@ -82,33 +82,6 @@ export function App() {
     tabsRef.current = tabs;
   }, [tabs]);
 
-  useEffect(() => {
-    if (!sidebarResizing) {
-      return undefined;
-    }
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const start = sidebarResizeRef.current;
-      if (!start) {
-        return;
-      }
-      setSidebarWidth(clamp(start.startWidth + event.clientX - start.startX, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH));
-    };
-    const stopResize = () => {
-      sidebarResizeRef.current = null;
-      setSidebarResizing(false);
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", stopResize, { once: true });
-    window.addEventListener("blur", stopResize, { once: true });
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", stopResize);
-      window.removeEventListener("blur", stopResize);
-    };
-  }, [sidebarResizing]);
-
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [activeTabId, tabs]);
   const dirtyCount = tabs.filter((tab) => tab.dirty).length;
 
@@ -460,17 +433,48 @@ export function App() {
     ? `${activeTab.data.length} 行 / ${maxColumnCount(activeTab.data)} 列 / ${activeTab.encoding.toUpperCase()}`
     : "未打开文件";
 
+  const moveSidebarResize = useCallback((event: PointerEvent) => {
+    const start = sidebarResizeRef.current;
+    if (!start) {
+      return;
+    }
+    setSidebarWidth(clamp(start.startWidth + event.clientX - start.startX, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH));
+  }, []);
+
+  const stopSidebarResize = useCallback(() => {
+    sidebarResizeRef.current = null;
+    setSidebarResizing(false);
+    window.removeEventListener("pointermove", moveSidebarResize);
+    window.removeEventListener("pointerup", stopSidebarResize);
+    window.removeEventListener("blur", stopSidebarResize);
+  }, [moveSidebarResize]);
+
   const beginSidebarResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
       event.preventDefault();
       sidebarResizeRef.current = {
         startX: event.clientX,
         startWidth: sidebarWidth
       };
       setSidebarResizing(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      window.addEventListener("pointermove", moveSidebarResize);
+      window.addEventListener("pointerup", stopSidebarResize, { once: true });
+      window.addEventListener("blur", stopSidebarResize, { once: true });
     },
-    [sidebarWidth]
+    [moveSidebarResize, sidebarWidth, stopSidebarResize]
   );
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener("pointermove", moveSidebarResize);
+      window.removeEventListener("pointerup", stopSidebarResize);
+      window.removeEventListener("blur", stopSidebarResize);
+    };
+  }, [moveSidebarResize, stopSidebarResize]);
 
   const handleSidebarResizeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {

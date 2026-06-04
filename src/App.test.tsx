@@ -107,6 +107,32 @@ describe("App local directory flow", () => {
     expect(resizer).toHaveAttribute("aria-valuenow", "310");
   });
 
+  it("does not leave the app in resize mode after an immediate pointer release", () => {
+    render(<App />);
+
+    const resizer = screen.getByRole("separator", { name: "调整侧边栏宽度" });
+    const appFrame = resizer.closest(".app-frame");
+
+    fireEvent.pointerDown(resizer, { button: 0, clientX: 310 });
+    fireEvent.pointerUp(window);
+
+    expect(appFrame).not.toHaveClass("resizing-sidebar");
+    expect(resizer).toHaveAttribute("aria-valuenow", "310");
+  });
+
+  it("ignores non-primary pointer buttons on the sidebar resizer", () => {
+    render(<App />);
+
+    const resizer = screen.getByRole("separator", { name: "调整侧边栏宽度" });
+    const appFrame = resizer.closest(".app-frame");
+
+    fireEvent.pointerDown(resizer, { button: 2, clientX: 310 });
+    fireEvent.pointerMove(window, { clientX: 430 });
+
+    expect(appFrame).not.toHaveClass("resizing-sidebar");
+    expect(resizer).toHaveAttribute("aria-valuenow", "310");
+  });
+
   it("supports keyboard sidebar resizing shortcuts", () => {
     render(<App />);
 
