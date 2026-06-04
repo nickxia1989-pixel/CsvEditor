@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+import {
+  matrixToTsv,
+  parseCsvText,
+  parseTsv,
+  readCell,
+  unparseCsvData,
+  writeCell
+} from "./csv";
+
+describe("csv helpers", () => {
+  it("keeps quoted commas and CRLF newline metadata", () => {
+    const parsed = parseCsvText('ID,Name,Desc\r\n1,Slime,"slow, green"\r\n');
+    expect(parsed.newline).toBe("\r\n");
+    expect(parsed.delimiter).toBe(",");
+    expect(parsed.data).toEqual([
+      ["ID", "Name", "Desc"],
+      ["1", "Slime", "slow, green"]
+    ]);
+  });
+
+  it("expands sparse writes without mutating the original matrix", () => {
+    const original = [["A"]];
+    const next = writeCell(original, 2, 2, "Z");
+    expect(original).toEqual([["A"]]);
+    expect(readCell(next, 2, 2)).toBe("Z");
+    expect(readCell(next, 1, 1)).toBe("");
+  });
+
+  it("round-trips tsv clipboard payloads", () => {
+    const tsv = matrixToTsv(
+      [
+        ["A", "B"],
+        ["C", "D"]
+      ],
+      0,
+      0,
+      1,
+      1
+    );
+    expect(tsv).toBe("A\tB\nC\tD");
+    expect(parseTsv(tsv)).toEqual([
+      ["A", "B"],
+      ["C", "D"]
+    ]);
+  });
+
+  it("serializes using the detected delimiter", () => {
+    const text = unparseCsvData(
+      [
+        ["A", "B"],
+        ["1", "2"]
+      ],
+      ";",
+      "\n"
+    );
+    expect(text).toBe("A;B\n1;2");
+  });
+});

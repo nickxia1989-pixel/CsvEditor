@@ -1,0 +1,13 @@
+{
+  "name": "Sample Tables",
+  "files": [
+    {
+      "path": "monster/monster.csv",
+      "url": "/sample/tables/monster/monster.csv"
+    },
+    {
+      "path": "skill/skill.csv",
+      "url": "/sample/tables/skill/skill.csv"
+    }
+  ]
+}

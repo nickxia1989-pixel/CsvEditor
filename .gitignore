@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.vite/
+artifacts/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+dev-server.err

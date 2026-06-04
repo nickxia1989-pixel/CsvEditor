@@ -1,0 +1,4 @@
+ID,Name,Level,HP,Atk,MoveSpeed,Desc
+1001,Training Slime,1,120,8,2.5,Starter monster
+1002,Forest Wolf,6,480,34,3.2,Fast melee
+1003,Crystal Golem,18,2400,96,1.7,"Slow, high armor"

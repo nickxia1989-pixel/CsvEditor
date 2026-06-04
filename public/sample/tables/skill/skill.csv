@@ -1,0 +1,4 @@
+ID,Name,Cooldown,Range,Cost,Target,Desc
+2001,Slash,1.2,1.5,0,Enemy,Basic weapon attack
+2002,Fireball,4.5,8,25,Enemy,Projectile damage
+2003,Guard,12,0,30,Self,Temporary damage reduction
