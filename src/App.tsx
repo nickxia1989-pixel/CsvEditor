@@ -85,7 +85,7 @@ export function App() {
       }
 
       try {
-        const id = crypto.randomUUID();
+        const id = createTabId();
         const tab = await createTabFromFileRef(fileRef, id);
         setTabs((current) => [...current, tab]);
         setActiveTabId(id);
@@ -672,4 +672,11 @@ function FilePrompt() {
       <p>左侧选择本地目录后，点击 CSV 文件即可加入上方页签。干净页签会自动热刷新，未保存页签会保留编辑并标记磁盘冲突。</p>
     </div>
   );
+}
+
+function createTabId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
