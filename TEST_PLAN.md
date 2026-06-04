@@ -82,6 +82,16 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: no console errors; sample tree loaded; duplicate `monster.csv` open kept one tab; find `wolf` jumped to `Forest Wolf`; replace changed it to `Forest Fox` and marked the tab dirty; read-only save stayed disabled with neutral styling; selecting `B2`, freezing, and zooming to 110% kept the grid viewport inside the workspace. Screenshot: `artifacts/csv-editor-refresh-find-freeze.png`.
 
+## Verification Run - 2026-06-04 Frozen Pane Stability
+
+- `npm test`: 8 files / 55 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235726 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Grid component regression: frozen rows/columns use viewport CSS scroll variables; frozen corner, frozen row cells, and frozen column cells keep separate transform paths while normal cells remain untransformed.
+- Browser smoke at `http://127.0.0.1:5173/`: clean run after `2026-06-04T12:12:52Z` produced 0 new console errors; after freezing `B2` and scrolling to `scrollLeft=520 / scrollTop=260`, CSS vars matched scroll state, frozen row/column alignment deltas were 0, and visible frozen cells hit themselves (`F1`, `A11`) instead of being covered by ordinary scrolled cells. Screenshot: `artifacts/csv-editor-freeze-scroll-clean.png`.
+- Browser multi-freeze smoke: clean run after `2026-06-04T12:14:44Z` produced 0 new console errors; after freezing `D4` (`3 行 / 3 列`) and scrolling to `scrollLeft=640 / scrollTop=300`, CSS vars matched scroll state, frozen row/column alignment deltas were 0, and visible frozen cells hit themselves (`I3`, `C15`).
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

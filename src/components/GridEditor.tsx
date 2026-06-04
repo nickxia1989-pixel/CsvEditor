@@ -156,6 +156,7 @@ export function GridEditor({
       }));
     });
     observer.observe(element);
+    syncViewportScrollVars(element);
     setViewport((current) => ({
       ...current,
       width: element.clientWidth,
@@ -589,6 +590,7 @@ export function GridEditor({
         tabIndex={0}
         onScroll={(event) => {
           const element = event.currentTarget;
+          syncViewportScrollVars(element);
           setViewport((current) => ({
             ...current,
             scrollTop: element.scrollTop,
@@ -611,8 +613,9 @@ export function GridEditor({
             style={{
               width: rowHeaderWidth,
               height: headerHeight,
-              left: viewport.scrollLeft,
-              top: viewport.scrollTop
+              left: 0,
+              top: 0,
+              transform: freezeTransform(true, true)
             }}
             onPointerDown={(event) => {
               event.preventDefault();
@@ -623,18 +626,18 @@ export function GridEditor({
 
           {visibleCols.map((col) => {
             const frozen = col < tab.freezeCols;
-            const left = frozen ? viewport.scrollLeft + rowHeaderWidth + colOffsets[col] : rowHeaderWidth + colOffsets[col];
             return (
               <div
                 key={`h-${col}`}
-                className={`column-header ${frozen ? "frozen" : ""}`}
+                className={`column-header ${frozen ? "frozen-col" : ""}`}
                 role="columnheader"
                 aria-label={`Column ${columnName(col)}`}
                 style={{
-                  left,
-                  top: viewport.scrollTop,
+                  left: rowHeaderWidth + colOffsets[col],
+                  top: 0,
                   width: colWidths[col],
-                  height: headerHeight
+                  height: headerHeight,
+                  transform: freezeTransform(true, frozen)
                 }}
                 onPointerDown={(event) => {
                   event.preventDefault();
@@ -664,14 +667,15 @@ export function GridEditor({
             return (
               <div
                 key={`r-${row}`}
-                className={`row-header ${frozen ? "frozen" : ""}`}
+                className={`row-header ${frozen ? "frozen-row" : ""}`}
                 role="rowheader"
                 aria-label={`Row ${row + 1}`}
                 style={{
-                  left: viewport.scrollLeft,
-                  top: frozen ? viewport.scrollTop + headerHeight + row * rowHeight : headerHeight + row * rowHeight,
+                  left: 0,
+                  top: headerHeight + row * rowHeight,
                   width: rowHeaderWidth,
-                  height: rowHeight
+                  height: rowHeight,
+                  transform: freezeTransform(frozen, true)
                 }}
                 onPointerDown={(event) => {
                   event.preventDefault();
@@ -696,8 +700,6 @@ export function GridEditor({
               const locked = lockedSet.has(key);
               const frozenRow = row < tab.freezeRows;
               const frozenCol = col < tab.freezeCols;
-              const left = frozenCol ? viewport.scrollLeft + rowHeaderWidth + colOffsets[col] : rowHeaderWidth + colOffsets[col];
-              const top = frozenRow ? viewport.scrollTop + headerHeight + row * rowHeight : headerHeight + row * rowHeight;
               const isEditing = editing?.row === row && editing.col === col;
 
               return (
@@ -705,15 +707,18 @@ export function GridEditor({
                   key={`${row}-${col}`}
                   className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${
                     locked ? "locked" : ""
-                  } ${frozenRow || frozenCol ? "frozen" : ""}`}
+                  } ${frozenRow || frozenCol ? "frozen" : ""} ${frozenRow ? "frozen-row" : ""} ${
+                    frozenCol ? "frozen-col" : ""
+                  }`}
                   role="gridcell"
                   aria-label={`${columnName(col)}${row + 1}`}
                   style={{
-                    left,
-                    top,
+                    left: rowHeaderWidth + colOffsets[col],
+                    top: headerHeight + row * rowHeight,
                     width: colWidths[col],
                     height: rowHeight,
-                    lineHeight: `${rowHeight - 2}px`
+                    lineHeight: `${rowHeight - 2}px`,
+                    transform: freezeTransform(frozenRow, frozenCol)
                   }}
                   onPointerDown={(event) => {
                     event.preventDefault();
@@ -777,6 +782,22 @@ function clamp(value: number, min: number, max: number): number {
     return min;
   }
   return Math.max(min, Math.min(max, value));
+}
+
+function syncViewportScrollVars(element: HTMLElement): void {
+  element.style.setProperty("--grid-scroll-left", `${element.scrollLeft}px`);
+  element.style.setProperty("--grid-scroll-top", `${element.scrollTop}px`);
+}
+
+function freezeTransform(frozenRow: boolean, frozenCol: boolean): string | undefined {
+  const transforms: string[] = [];
+  if (frozenCol) {
+    transforms.push("translateX(var(--grid-scroll-left))");
+  }
+  if (frozenRow) {
+    transforms.push("translateY(var(--grid-scroll-top))");
+  }
+  return transforms.length > 0 ? transforms.join(" ") : undefined;
 }
 
 function findColumnAtOffset(offsets: number[], target: number): number {
