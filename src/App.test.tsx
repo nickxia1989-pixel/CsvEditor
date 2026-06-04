@@ -80,6 +80,54 @@ describe("App local directory flow", () => {
     expect(screen.queryByText(/^热刷新/)).not.toBeInTheDocument();
   });
 
+  it("resizes the sidebar with a pointer and clamps to bounds", async () => {
+    render(<App />);
+
+    const resizer = screen.getByRole("separator", { name: "调整侧边栏宽度" });
+    const appFrame = resizer.closest(".app-frame");
+
+    expect(resizer).toHaveAttribute("aria-valuenow", "310");
+
+    fireEvent.pointerDown(resizer, { clientX: 310 });
+    await waitFor(() => expect(appFrame).toHaveClass("resizing-sidebar"));
+
+    fireEvent.pointerMove(window, { clientX: 430 });
+    await waitFor(() => expect(resizer).toHaveAttribute("aria-valuenow", "430"));
+
+    fireEvent.pointerMove(window, { clientX: -100 });
+    await waitFor(() => expect(resizer).toHaveAttribute("aria-valuenow", "240"));
+
+    fireEvent.pointerMove(window, { clientX: 900 });
+    await waitFor(() => expect(resizer).toHaveAttribute("aria-valuenow", "520"));
+
+    fireEvent.pointerUp(window);
+    await waitFor(() => expect(appFrame).not.toHaveClass("resizing-sidebar"));
+
+    fireEvent.doubleClick(resizer);
+    expect(resizer).toHaveAttribute("aria-valuenow", "310");
+  });
+
+  it("supports keyboard sidebar resizing shortcuts", () => {
+    render(<App />);
+
+    const resizer = screen.getByRole("separator", { name: "调整侧边栏宽度" });
+
+    fireEvent.keyDown(resizer, { key: "ArrowRight" });
+    expect(resizer).toHaveAttribute("aria-valuenow", "330");
+
+    fireEvent.keyDown(resizer, { key: "ArrowRight", shiftKey: true });
+    expect(resizer).toHaveAttribute("aria-valuenow", "390");
+
+    fireEvent.keyDown(resizer, { key: "ArrowLeft" });
+    expect(resizer).toHaveAttribute("aria-valuenow", "370");
+
+    fireEvent.keyDown(resizer, { key: "Home" });
+    expect(resizer).toHaveAttribute("aria-valuenow", "240");
+
+    fireEvent.keyDown(resizer, { key: "End" });
+    expect(resizer).toHaveAttribute("aria-valuenow", "520");
+  });
+
   it("opens a CSV from a picked directory and marks edits as dirty", async () => {
     const file = new MockFileHandle("monster.csv", "ID,Name\n1001,Slime");
     const root = new MockDirectoryHandle("Tables", [

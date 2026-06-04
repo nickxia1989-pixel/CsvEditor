@@ -40,10 +40,15 @@ button {
 
 .app-frame {
   display: grid;
-  grid-template-columns: 310px minmax(0, 1fr);
+  grid-template-columns: 310px 6px minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: #e9eef0;
+}
+
+.app-frame.resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .directory-pane {
@@ -52,12 +57,41 @@ button {
   min-height: 0;
   overflow: hidden;
   flex-direction: column;
-  border-right: 1px solid var(--line);
   background: #fbfcfc;
 }
 
+.sidebar-resizer {
+  position: relative;
+  min-width: 6px;
+  width: 6px;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  background: #e3e9eb;
+  cursor: col-resize;
+  outline: none;
+}
+
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 2px;
+  width: 2px;
+  border-radius: 99px;
+  background: var(--accent);
+  opacity: 0;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+.app-frame.resizing-sidebar .sidebar-resizer::after {
+  opacity: 1;
+}
+
 .pane-title {
-  padding: 16px 16px 12px;
+  padding: 13px 14px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -79,7 +113,7 @@ button {
   display: grid;
   grid-template-columns: 1fr 86px;
   gap: 8px;
-  padding: 12px 12px 8px;
+  padding: 10px 10px 7px;
 }
 
 .primary-button,
@@ -139,9 +173,9 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 12px 10px;
+  margin: 0 10px 8px;
   padding: 0 9px;
-  min-height: 32px;
+  min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
@@ -257,7 +291,7 @@ button:disabled {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 7px 8px 0;
+  padding: 5px 7px 0;
   gap: 4px;
 }
 
@@ -272,10 +306,10 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 240px;
-  min-width: 116px;
-  height: 34px;
-  padding: 0 7px 0 10px;
+  max-width: 220px;
+  min-width: 104px;
+  height: 30px;
+  padding: 0 6px 0 9px;
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: 6px 6px 0 0;
@@ -313,8 +347,8 @@ button:disabled {
 .tab-close {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   margin-left: auto;
   border: 0;
   border-radius: 4px;
@@ -330,14 +364,15 @@ button:disabled {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: 6px;
+  padding: 5px 8px;
   border-left: 1px solid var(--line);
 }
 
 .toolbar-button {
-  min-width: 80px;
-  padding: 0 11px;
+  min-width: 72px;
+  min-height: 28px;
+  padding: 0 9px;
 }
 
 .toolbar-button.save {
@@ -355,9 +390,10 @@ button:disabled {
 .workspace-status {
   display: flex;
   align-items: center;
-  gap: 18px;
-  min-height: 32px;
-  padding: 0 12px;
+  gap: 12px;
+  min-height: 26px;
+  overflow: hidden;
+  padding: 0 10px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   color: var(--text-soft);
@@ -369,6 +405,7 @@ button:disabled {
   align-items: center;
   gap: 5px;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .notice {
@@ -394,9 +431,9 @@ button:disabled {
 .conflict-banner {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 0 12px;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
   border-bottom: 1px solid #efca88;
   background: #fff5dd;
   color: #70470a;
@@ -416,8 +453,8 @@ button:disabled {
 }
 
 .conflict-banner button {
-  min-height: 28px;
-  padding: 0 10px;
+  min-height: 26px;
+  padding: 0 9px;
   border-color: #d8ab59;
   background: #fffaf0;
 }
@@ -428,8 +465,8 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: 10px;
-  gap: 8px;
+  padding: 6px 8px 7px;
+  gap: 5px;
 }
 
 .formula-bar,
@@ -437,22 +474,22 @@ button:disabled {
 .grid-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 34px;
+  gap: 6px;
+  min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
 }
 
 .formula-bar {
-  padding: 0 8px;
+  padding: 0 7px;
 }
 
 .cell-name {
   display: inline-grid;
   place-items: center;
-  min-width: 72px;
-  height: 24px;
+  min-width: 64px;
+  height: 22px;
   border-right: 1px solid var(--line);
   color: #3a4c56;
   font-weight: 600;
@@ -461,14 +498,14 @@ button:disabled {
 .formula-bar input {
   flex: 1;
   min-width: 0;
-  height: 28px;
+  height: 26px;
   border: 0;
   outline: 0;
   background: transparent;
 }
 
 .lock-state {
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: #e9f4f2;
   color: var(--accent-strong);
@@ -481,15 +518,18 @@ button:disabled {
 }
 
 .grid-tools {
-  padding: 5px 7px;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  overflow: auto;
+  padding: 3px 6px;
+  flex-wrap: nowrap;
+  align-content: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .tool-button {
-  min-height: 28px;
-  padding: 0 9px;
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 8px;
   white-space: nowrap;
 }
 
@@ -500,16 +540,18 @@ button:disabled {
 }
 
 .icon-button {
-  width: 28px;
-  min-height: 28px;
-  flex: 0 0 28px;
+  width: 26px;
+  min-height: 26px;
+  flex: 0 0 26px;
 }
 
 .zoom-slider {
-  width: 118px;
+  flex: 0 0 auto;
+  width: 108px;
 }
 
 .zoom-label {
+  flex: 0 0 auto;
   min-width: 42px;
   color: var(--text-soft);
   font-size: 12px;
@@ -517,10 +559,11 @@ button:disabled {
 
 .grid-search {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 5px;
-  min-width: 160px;
-  height: 28px;
+  min-width: 144px;
+  height: 26px;
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -530,7 +573,7 @@ button:disabled {
 
 .grid-search input {
   min-width: 0;
-  width: 108px;
+  width: 96px;
   border: 0;
   outline: 0;
   background: transparent;
@@ -687,8 +730,8 @@ button:disabled {
 }
 
 .grid-status {
-  min-height: 28px;
-  padding: 0 9px;
+  min-height: 24px;
+  padding: 0 8px;
   color: var(--text-soft);
   font-size: 12px;
 }

@@ -14,6 +14,7 @@
 | 目录树 | 大目录滚动 | Browser + synthetic large tree | 文件列表可滚轮滚动、拖 scrollbar、搜索后仍可滚动 |
 | 目录树 | 懒加载展开/折叠 | Component test + Browser smoke | 目录展开只加载该层，折叠不丢子节点 |
 | 目录树 | 筛选 | Component test + Browser smoke | 已加载节点按名称/路径筛选，父目录保留 |
+| 布局 | 左侧侧栏拖拽宽度 | App test + Browser smoke | 鼠标拖拽限制在 240-520px，右侧工作区和目录树不重叠、不溢出 |
 | 多标签 | 打开多个 CSV | App integration test | 已打开文件进入上方标签，重复打开只激活旧标签 |
 | 多标签 | 未保存提示和关闭保护 | App integration test | 脏标签有标记，关闭/刷新前提示 |
 | 表格显示 | 大 CSV 虚拟滚动 | Browser + sample stress data | 横纵滚动顺畅，表头/行号对齐 |
@@ -99,6 +100,14 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235899 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; opening `monster.csv` showed `冻结 2 行 / 1 列`, top status text did not contain `热刷新`, sticky freeze layers reported `position: sticky`, A1 had no transform, and 50 samples during scroll to `scrollLeft=700 / scrollTop=320` showed A1 max left/top delta `0 / 0`. Screenshot: `artifacts/csv-editor-sticky-default-b3.png`.
+
+## Verification Run - 2026-06-04 Resizable Compact Layout
+
+- `npm test`: 8 files / 59 tests passed after adding pointer and keyboard coverage for the resizable sidebar.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235899 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; side bar widths clamped at `240px` and `520px`, plus a mid-width drag, without overlap; right toolbar stayed to one compact horizontal row and the grid viewport remained inside the workspace with about `529px` visible height. Find, edit, dirty marker, lock/unlock, zoom, and grid scroll all worked. Screenshot: `artifacts/csv-editor-resizable-compact-layout.png`.
 
 ## Current Known Gaps
 

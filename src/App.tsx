@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent
+} from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -38,6 +46,11 @@ import type { CsvTab, TreeNode } from "./types";
 import { cellKey, normalizeSelection, singleCellSelection } from "./types";
 
 const HOT_REFRESH_INTERVAL_MS = 5000;
+const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MAX_WIDTH = 520;
+const SIDEBAR_DEFAULT_WIDTH = 310;
+const SIDEBAR_KEYBOARD_STEP = 20;
+const SIDEBAR_KEYBOARD_LARGE_STEP = 60;
 
 type Notice = {
   tone: "info" | "success" | "warning" | "error";
@@ -56,15 +69,45 @@ export function App() {
   const [tabs, setTabs] = useState<CsvTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
   const tabsRef = useRef(tabs);
   const pollBusyRef = useRef(false);
   const openingPathsRef = useRef(new Set<string>());
   const pendingActivatePathRef = useRef<string | null>(null);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const directoryPickerAvailable = canPickDirectory();
 
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+
+  useEffect(() => {
+    if (!sidebarResizing) {
+      return undefined;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const start = sidebarResizeRef.current;
+      if (!start) {
+        return;
+      }
+      setSidebarWidth(clamp(start.startWidth + event.clientX - start.startX, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH));
+    };
+    const stopResize = () => {
+      sidebarResizeRef.current = null;
+      setSidebarResizing(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResize, { once: true });
+    window.addEventListener("blur", stopResize, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("blur", stopResize);
+    };
+  }, [sidebarResizing]);
 
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [activeTabId, tabs]);
   const dirtyCount = tabs.filter((tab) => tab.dirty).length;
@@ -417,8 +460,45 @@ export function App() {
     ? `${activeTab.data.length} 行 / ${maxColumnCount(activeTab.data)} 列 / ${activeTab.encoding.toUpperCase()}`
     : "未打开文件";
 
+  const beginSidebarResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      sidebarResizeRef.current = {
+        startX: event.clientX,
+        startWidth: sidebarWidth
+      };
+      setSidebarResizing(true);
+    },
+    [sidebarWidth]
+  );
+
+  const handleSidebarResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const step = event.shiftKey ? SIDEBAR_KEYBOARD_LARGE_STEP : SIDEBAR_KEYBOARD_STEP;
+      let nextWidth = sidebarWidth;
+      if (event.key === "ArrowLeft") {
+        nextWidth -= step;
+      } else if (event.key === "ArrowRight") {
+        nextWidth += step;
+      } else if (event.key === "Home") {
+        nextWidth = SIDEBAR_MIN_WIDTH;
+      } else if (event.key === "End") {
+        nextWidth = SIDEBAR_MAX_WIDTH;
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      setSidebarWidth(clamp(nextWidth, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH));
+    },
+    [sidebarWidth]
+  );
+
   return (
-    <div className="app-frame">
+    <div
+      className={`app-frame ${sidebarResizing ? "resizing-sidebar" : ""}`}
+      style={{ gridTemplateColumns: `${sidebarWidth}px 6px minmax(0, 1fr)` }}
+    >
       <DirectoryPane
         root={root}
         filter={treeFilter}
@@ -428,6 +508,21 @@ export function App() {
         onLoadSample={handleLoadSample}
         onToggleDirectory={handleToggleDirectory}
         onOpenFile={handleOpenTreeFile}
+      />
+
+      <div
+        className="sidebar-resizer"
+        role="separator"
+        aria-label="调整侧边栏宽度"
+        aria-orientation="vertical"
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={SIDEBAR_MAX_WIDTH}
+        aria-valuenow={sidebarWidth}
+        tabIndex={0}
+        title="拖拽调整左侧宽度，双击还原"
+        onPointerDown={beginSidebarResize}
+        onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+        onKeyDown={handleSidebarResizeKeyDown}
       />
 
       <main className="workspace">
