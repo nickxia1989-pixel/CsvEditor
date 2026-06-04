@@ -71,6 +71,15 @@ afterEach(() => {
 });
 
 describe("App local directory flow", () => {
+  it("uses a hidden 5 second hot refresh interval", () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+
+    render(<App />);
+
+    expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
+    expect(screen.queryByText(/^热刷新/)).not.toBeInTheDocument();
+  });
+
   it("opens a CSV from a picked directory and marks edits as dirty", async () => {
     const file = new MockFileHandle("monster.csv", "ID,Name\n1001,Slime");
     const root = new MockDirectoryHandle("Tables", [
@@ -92,6 +101,7 @@ describe("App local directory flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "monster.csv" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
     expect(screen.getByRole("tab", { name: /monster\.csv/ })).toBeInTheDocument();
+    expect(screen.getByText("冻结 2 行 / 1 列")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "ID_EDIT" } });
 
@@ -471,6 +481,30 @@ describe("App local directory flow", () => {
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("2");
 
     fireEvent.click(screen.getByRole("button", { name: "取消冻结" }));
+    expect(screen.getByText("冻结 0 行 / 0 列")).toBeInTheDocument();
+  });
+
+  it("keeps manual freeze cancellation after refreshing the file", async () => {
+    const file = new MockFileHandle("freeze-cancel.csv", "A,B,C\n1,2,3\n4,5,6");
+    const root = new MockDirectoryHandle("Tables", [["freeze-cancel.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "freeze-cancel.csv" }));
+    await waitFor(() => expect(screen.getByText("冻结 2 行 / 1 列")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "取消冻结" }));
+    expect(screen.getByText("冻结 0 行 / 0 列")).toBeInTheDocument();
+
+    file.externalWrite("A,B,C\n7,8,9\n4,5,6");
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
     expect(screen.getByText("冻结 0 行 / 0 列")).toBeInTheDocument();
   });
 });

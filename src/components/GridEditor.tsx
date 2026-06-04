@@ -100,6 +100,7 @@ export function GridEditor({
   onAddColumn
 }: GridEditorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const viewportFrameRef = useRef<number | null>(null);
   const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
   const [viewport, setViewport] = useState<ViewportState>({
     width: 800,
@@ -148,21 +149,40 @@ export function GridEditor({
     if (!element) {
       return undefined;
     }
-    const observer = new ResizeObserver(() => {
-      setViewport((current) => ({
-        ...current,
+    const updateViewportNow = () => {
+      setViewport({
         width: element.clientWidth,
-        height: element.clientHeight
-      }));
-    });
+        height: element.clientHeight,
+        scrollTop: element.scrollTop,
+        scrollLeft: element.scrollLeft
+      });
+    };
+    const scheduleViewportUpdate = () => {
+      if (viewportFrameRef.current !== null) {
+        return;
+      }
+      viewportFrameRef.current = window.requestAnimationFrame(() => {
+        viewportFrameRef.current = null;
+        setViewport({
+          width: element.clientWidth,
+          height: element.clientHeight,
+          scrollTop: element.scrollTop,
+          scrollLeft: element.scrollLeft
+        });
+      });
+    };
+    const observer = new ResizeObserver(updateViewportNow);
     observer.observe(element);
-    syncViewportScrollVars(element);
-    setViewport((current) => ({
-      ...current,
-      width: element.clientWidth,
-      height: element.clientHeight
-    }));
-    return () => observer.disconnect();
+    element.addEventListener("scroll", scheduleViewportUpdate, { passive: true });
+    updateViewportNow();
+    return () => {
+      observer.disconnect();
+      element.removeEventListener("scroll", scheduleViewportUpdate);
+      if (viewportFrameRef.current !== null) {
+        window.cancelAnimationFrame(viewportFrameRef.current);
+        viewportFrameRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -259,6 +279,16 @@ export function GridEditor({
   const findAvailable = tab.findQuery.trim().length > 0;
   const realEndRow = Math.max(0, tab.data.length - 1);
   const realEndCol = Math.max(0, maxColumnCount(tab.data) - 1);
+  const freezeRowCount = clamp(tab.freezeRows, 0, rowCount);
+  const freezeColCount = clamp(tab.freezeCols, 0, maxCols);
+  const frozenRows = useMemo(() => numberRange(freezeRowCount), [freezeRowCount]);
+  const frozenCols = useMemo(() => numberRange(freezeColCount), [freezeColCount]);
+  const bodyRows = useMemo(() => visibleRows.filter((row) => row >= freezeRowCount), [freezeRowCount, visibleRows]);
+  const bodyCols = useMemo(() => visibleCols.filter((col) => col >= freezeColCount), [freezeColCount, visibleCols]);
+  const frozenWidth = colOffsets[freezeColCount] ?? 0;
+  const frozenHeight = freezeRowCount * rowHeight;
+  const stickyTopHeight = headerHeight + frozenHeight;
+  const stickyLeftWidth = rowHeaderWidth + frozenWidth;
 
   useEffect(() => {
     setEditing(null);
@@ -450,6 +480,130 @@ export function GridEditor({
     onPaste(tab.selection.focusRow, tab.selection.focusCol, parseTsv(text));
   };
 
+  const renderColumnHeader = (col: number, keyPrefix: string, className = "") => (
+    <div
+      key={`${keyPrefix}-h-${col}`}
+      className={`column-header ${className}`}
+      role="columnheader"
+      aria-label={`Column ${columnName(col)}`}
+      style={{
+        left: rowHeaderWidth + colOffsets[col],
+        top: 0,
+        width: colWidths[col],
+        height: headerHeight
+      }}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        onSelectionChange({ anchorRow: 0, anchorCol: col, focusRow: realEndRow, focusCol: col });
+        viewportRef.current?.focus();
+      }}
+    >
+      {columnName(col)}
+      <span
+        className="column-resizer"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setResizeState({
+            col,
+            startX: event.clientX,
+            startWidth: tab.colWidths[col] ?? DEFAULT_COL_WIDTH
+          });
+        }}
+      />
+    </div>
+  );
+
+  const renderRowHeader = (row: number, keyPrefix: string, className = "") => (
+    <div
+      key={`${keyPrefix}-r-${row}`}
+      className={`row-header ${className}`}
+      role="rowheader"
+      aria-label={`Row ${row + 1}`}
+      style={{
+        left: 0,
+        top: headerHeight + row * rowHeight,
+        width: rowHeaderWidth,
+        height: rowHeight
+      }}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        onSelectionChange({ anchorRow: row, anchorCol: 0, focusRow: row, focusCol: realEndCol });
+        viewportRef.current?.focus();
+      }}
+    >
+      {row + 1}
+    </div>
+  );
+
+  const renderCell = (row: number, col: number, keyPrefix: string, className = "") => {
+    const key = cellKey(row, col);
+    const selected =
+      row >= selectionRange.startRow &&
+      row <= selectionRange.endRow &&
+      col >= selectionRange.startCol &&
+      col <= selectionRange.endCol;
+    const focus = row === tab.selection.focusRow && col === tab.selection.focusCol;
+    const locked = lockedSet.has(key);
+    const isEditing = editing?.row === row && editing.col === col;
+
+    return (
+      <div
+        key={`${keyPrefix}-${row}-${col}`}
+        className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${
+          locked ? "locked" : ""
+        } ${className}`}
+        role="gridcell"
+        aria-label={`${columnName(col)}${row + 1}`}
+        style={{
+          left: rowHeaderWidth + colOffsets[col],
+          top: headerHeight + row * rowHeight,
+          width: colWidths[col],
+          height: rowHeight,
+          lineHeight: `${rowHeight - 2}px`
+        }}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          dragAnchorRef.current = { row, col };
+          setDragging(true);
+          onSelectionChange(singleCellSelection(row, col));
+          viewportRef.current?.focus();
+        }}
+        onPointerEnter={() => {
+          updateDragSelection(row, col);
+        }}
+        onDoubleClick={() => beginEdit(row, col)}
+        title={locked ? "该格已锁定" : undefined}
+      >
+        {isEditing ? (
+          <input
+            className="cell-editor"
+            value={editing.value}
+            autoFocus
+            onChange={(event) => setEditing({ row, col, value: event.target.value })}
+            onBlur={commitEditing}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitEditing();
+                moveSelection(1, 0, false);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setEditing(null);
+              } else if (event.key === "Tab") {
+                event.preventDefault();
+                commitEditing();
+                moveSelection(0, event.shiftKey ? -1 : 1, false);
+              }
+            }}
+          />
+        ) : (
+          readCell(tab.data, row, col)
+        )}
+      </div>
+    );
+  };
+
   return (
     <section className="grid-shell">
       <div className="formula-bar">
@@ -588,15 +742,6 @@ export function GridEditor({
         aria-label="CSV grid"
         ref={viewportRef}
         tabIndex={0}
-        onScroll={(event) => {
-          const element = event.currentTarget;
-          syncViewportScrollVars(element);
-          setViewport((current) => ({
-            ...current,
-            scrollTop: element.scrollTop,
-            scrollLeft: element.scrollLeft
-          }));
-        }}
         onKeyDown={handleGridKeyDown}
         onPaste={handlePaste}
         onPointerMove={(event) => {
@@ -605,7 +750,33 @@ export function GridEditor({
           }
         }}
       >
-        <div className="grid-canvas" style={{ width: totalWidth, height: totalHeight }}>
+        <div
+          className="grid-freeze-layer grid-freeze-top"
+          data-testid="grid-freeze-top"
+          style={{ width: totalWidth, height: stickyTopHeight, marginBottom: -stickyTopHeight }}
+        >
+          {bodyCols.map((col) => renderColumnHeader(col, "freeze-top", "frozen-row"))}
+          {frozenRows.flatMap((row) =>
+            bodyCols.map((col) => renderCell(row, col, "freeze-top", "frozen frozen-row"))
+          )}
+        </div>
+
+        <div
+          className="grid-freeze-layer grid-freeze-left"
+          data-testid="grid-freeze-left"
+          style={{ width: stickyLeftWidth, height: totalHeight, marginBottom: -totalHeight }}
+        >
+          {bodyRows.map((row) => renderRowHeader(row, "freeze-left", "frozen-col"))}
+          {bodyRows.flatMap((row) =>
+            frozenCols.map((col) => renderCell(row, col, "freeze-left", "frozen frozen-col"))
+          )}
+        </div>
+
+        <div
+          className="grid-freeze-layer grid-freeze-corner"
+          data-testid="grid-freeze-corner"
+          style={{ width: stickyLeftWidth, height: stickyTopHeight, marginBottom: -stickyTopHeight }}
+        >
           <div
             className="grid-corner"
             role="button"
@@ -614,8 +785,7 @@ export function GridEditor({
               width: rowHeaderWidth,
               height: headerHeight,
               left: 0,
-              top: 0,
-              transform: freezeTransform(true, true)
+              top: 0
             }}
             onPointerDown={(event) => {
               event.preventDefault();
@@ -623,145 +793,15 @@ export function GridEditor({
               viewportRef.current?.focus();
             }}
           />
-
-          {visibleCols.map((col) => {
-            const frozen = col < tab.freezeCols;
-            return (
-              <div
-                key={`h-${col}`}
-                className={`column-header ${frozen ? "frozen-col" : ""}`}
-                role="columnheader"
-                aria-label={`Column ${columnName(col)}`}
-                style={{
-                  left: rowHeaderWidth + colOffsets[col],
-                  top: 0,
-                  width: colWidths[col],
-                  height: headerHeight,
-                  transform: freezeTransform(true, frozen)
-                }}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  onSelectionChange({ anchorRow: 0, anchorCol: col, focusRow: realEndRow, focusCol: col });
-                  viewportRef.current?.focus();
-                }}
-              >
-                {columnName(col)}
-                <span
-                  className="column-resizer"
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setResizeState({
-                      col,
-                      startX: event.clientX,
-                      startWidth: tab.colWidths[col] ?? DEFAULT_COL_WIDTH
-                    });
-                  }}
-                />
-              </div>
-            );
-          })}
-
-          {visibleRows.map((row) => {
-            const frozen = row < tab.freezeRows;
-            return (
-              <div
-                key={`r-${row}`}
-                className={`row-header ${frozen ? "frozen-row" : ""}`}
-                role="rowheader"
-                aria-label={`Row ${row + 1}`}
-                style={{
-                  left: 0,
-                  top: headerHeight + row * rowHeight,
-                  width: rowHeaderWidth,
-                  height: rowHeight,
-                  transform: freezeTransform(frozen, true)
-                }}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  onSelectionChange({ anchorRow: row, anchorCol: 0, focusRow: row, focusCol: realEndCol });
-                  viewportRef.current?.focus();
-                }}
-              >
-                {row + 1}
-              </div>
-            );
-          })}
-
-          {visibleRows.flatMap((row) =>
-            visibleCols.map((col) => {
-              const key = cellKey(row, col);
-              const selected =
-                row >= selectionRange.startRow &&
-                row <= selectionRange.endRow &&
-                col >= selectionRange.startCol &&
-                col <= selectionRange.endCol;
-              const focus = row === tab.selection.focusRow && col === tab.selection.focusCol;
-              const locked = lockedSet.has(key);
-              const frozenRow = row < tab.freezeRows;
-              const frozenCol = col < tab.freezeCols;
-              const isEditing = editing?.row === row && editing.col === col;
-
-              return (
-                <div
-                  key={`${row}-${col}`}
-                  className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${
-                    locked ? "locked" : ""
-                  } ${frozenRow || frozenCol ? "frozen" : ""} ${frozenRow ? "frozen-row" : ""} ${
-                    frozenCol ? "frozen-col" : ""
-                  }`}
-                  role="gridcell"
-                  aria-label={`${columnName(col)}${row + 1}`}
-                  style={{
-                    left: rowHeaderWidth + colOffsets[col],
-                    top: headerHeight + row * rowHeight,
-                    width: colWidths[col],
-                    height: rowHeight,
-                    lineHeight: `${rowHeight - 2}px`,
-                    transform: freezeTransform(frozenRow, frozenCol)
-                  }}
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    dragAnchorRef.current = { row, col };
-                    setDragging(true);
-                    onSelectionChange(singleCellSelection(row, col));
-                    viewportRef.current?.focus();
-                  }}
-                  onPointerEnter={() => {
-                    updateDragSelection(row, col);
-                  }}
-                  onDoubleClick={() => beginEdit(row, col)}
-                  title={locked ? "该格已锁定" : undefined}
-                >
-                  {isEditing ? (
-                    <input
-                      className="cell-editor"
-                      value={editing.value}
-                      autoFocus
-                      onChange={(event) => setEditing({ row, col, value: event.target.value })}
-                      onBlur={commitEditing}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          commitEditing();
-                          moveSelection(1, 0, false);
-                        } else if (event.key === "Escape") {
-                          event.preventDefault();
-                          setEditing(null);
-                        } else if (event.key === "Tab") {
-                          event.preventDefault();
-                          commitEditing();
-                          moveSelection(0, event.shiftKey ? -1 : 1, false);
-                        }
-                      }}
-                    />
-                  ) : (
-                    readCell(tab.data, row, col)
-                  )}
-                </div>
-              );
-            })
+          {frozenCols.map((col) => renderColumnHeader(col, "freeze-corner", "frozen-row frozen-col"))}
+          {frozenRows.map((row) => renderRowHeader(row, "freeze-corner", "frozen-row frozen-col"))}
+          {frozenRows.flatMap((row) =>
+            frozenCols.map((col) => renderCell(row, col, "freeze-corner", "frozen frozen-row frozen-col"))
           )}
+        </div>
+
+        <div className="grid-canvas" style={{ width: totalWidth, height: totalHeight }}>
+          {bodyRows.flatMap((row) => bodyCols.map((col) => renderCell(row, col, "body")))}
         </div>
       </div>
 
@@ -784,20 +824,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function syncViewportScrollVars(element: HTMLElement): void {
-  element.style.setProperty("--grid-scroll-left", `${element.scrollLeft}px`);
-  element.style.setProperty("--grid-scroll-top", `${element.scrollTop}px`);
-}
-
-function freezeTransform(frozenRow: boolean, frozenCol: boolean): string | undefined {
-  const transforms: string[] = [];
-  if (frozenCol) {
-    transforms.push("translateX(var(--grid-scroll-left))");
-  }
-  if (frozenRow) {
-    transforms.push("translateY(var(--grid-scroll-top))");
-  }
-  return transforms.length > 0 ? transforms.join(" ") : undefined;
+function numberRange(count: number): number[] {
+  return Array.from({ length: count }, (_, index) => index);
 }
 
 function findColumnAtOffset(offsets: number[], target: number): number {

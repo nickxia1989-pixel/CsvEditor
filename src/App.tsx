@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Clock3,
   RefreshCw,
   RotateCcw,
   Save,
@@ -38,7 +37,7 @@ import { createLocalRoot, loadLocalChildren, loadSampleTree, updateNode } from "
 import type { CsvTab, TreeNode } from "./types";
 import { cellKey, normalizeSelection, singleCellSelection } from "./types";
 
-const HOT_REFRESH_INTERVAL_MS = 2000;
+const HOT_REFRESH_INTERVAL_MS = 5000;
 
 type Notice = {
   tone: "info" | "success" | "warning" | "error";
@@ -57,7 +56,6 @@ export function App() {
   const [tabs, setTabs] = useState<CsvTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
-  const [polling, setPolling] = useState(false);
   const tabsRef = useRef(tabs);
   const pollBusyRef = useRef(false);
   const openingPathsRef = useRef(new Set<string>());
@@ -359,7 +357,6 @@ export function App() {
         return;
       }
       pollBusyRef.current = true;
-      setPolling(true);
       try {
         const snapshot = tabsRef.current;
         for (const tab of snapshot) {
@@ -401,7 +398,6 @@ export function App() {
         notify("error", error instanceof Error ? error.message : String(error));
       } finally {
         pollBusyRef.current = false;
-        setPolling(false);
       }
     }, HOT_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
@@ -469,10 +465,6 @@ export function App() {
         </header>
 
         <div className="workspace-status">
-          <span>
-            <Clock3 size={14} />
-            热刷新 {polling ? "检查中" : "2s"}
-          </span>
           <span>
             {dirtyCount > 0 ? <ShieldAlert size={14} /> : <CheckCircle2 size={14} />}
             未保存 {dirtyCount}

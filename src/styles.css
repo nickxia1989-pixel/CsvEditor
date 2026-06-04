@@ -542,9 +542,7 @@ button:disabled {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
-  --grid-scroll-left: 0px;
-  --grid-scroll-top: 0px;
+  scrollbar-gutter: stable;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--panel);
@@ -558,6 +556,32 @@ button:disabled {
 
 .grid-canvas {
   position: relative;
+}
+
+.grid-freeze-layer {
+  position: sticky;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.grid-freeze-layer > * {
+  pointer-events: auto;
+}
+
+.grid-freeze-top {
+  top: 0;
+  z-index: 20;
+}
+
+.grid-freeze-left {
+  left: 0;
+  z-index: 21;
+}
+
+.grid-freeze-corner {
+  top: 0;
+  left: 0;
+  z-index: 30;
 }
 
 .grid-corner,
@@ -592,8 +616,10 @@ button:disabled {
   user-select: none;
 }
 
+.column-header.frozen-row,
 .column-header.frozen-col,
-.row-header.frozen-row {
+.row-header.frozen-row,
+.row-header.frozen-col {
   z-index: 12;
   background: #e6f0ee;
 }

@@ -223,7 +223,7 @@ describe("GridEditor toolbar", () => {
     });
   });
 
-  it("uses scroll CSS variables for frozen rows and columns", () => {
+  it("renders frozen rows and columns in sticky layers without scroll transforms", () => {
     renderGrid(createTab({ freezeRows: 1, freezeCols: 1 }));
 
     const grid = screen.getByRole("grid", { name: "CSV grid" });
@@ -231,8 +231,8 @@ describe("GridEditor toolbar", () => {
     grid.scrollLeft = 244;
     fireEvent.scroll(grid);
 
-    expect(grid.style.getPropertyValue("--grid-scroll-top")).toBe("84px");
-    expect(grid.style.getPropertyValue("--grid-scroll-left")).toBe("244px");
+    expect(grid.style.getPropertyValue("--grid-scroll-top")).toBe("");
+    expect(grid.style.getPropertyValue("--grid-scroll-left")).toBe("");
 
     expect(screen.getByRole("columnheader", { name: "Column A" })).toHaveClass("frozen-col");
     expect(screen.getByRole("rowheader", { name: "Row 1" })).toHaveClass("frozen-row");
@@ -240,14 +240,15 @@ describe("GridEditor toolbar", () => {
     const corner = screen.getByRole("button", { name: "Select all cells" });
     expect(corner.style.left).toBe("0px");
     expect(corner.style.top).toBe("0px");
-    expect(corner.style.transform).toBe("translateX(var(--grid-scroll-left)) translateY(var(--grid-scroll-top))");
+    expect(corner.style.transform).toBe("");
 
     const frozenCornerCell = screen.getByRole("gridcell", { name: "A1" });
     expect(frozenCornerCell).toHaveClass("frozen", "frozen-row", "frozen-col");
-    expect(frozenCornerCell.style.transform).toBe("translateX(var(--grid-scroll-left)) translateY(var(--grid-scroll-top))");
+    expect(frozenCornerCell.style.transform).toBe("");
+    expect(screen.getByTestId("grid-freeze-corner")).toContainElement(frozenCornerCell);
 
-    expect(screen.getByRole("gridcell", { name: "B1" }).style.transform).toBe("translateY(var(--grid-scroll-top))");
-    expect(screen.getByRole("gridcell", { name: "A2" }).style.transform).toBe("translateX(var(--grid-scroll-left))");
-    expect(screen.getByRole("gridcell", { name: "B2" }).style.transform).toBe("");
+    expect(screen.getByTestId("grid-freeze-top")).toContainElement(screen.getByRole("gridcell", { name: "B1" }));
+    expect(screen.getByTestId("grid-freeze-left")).toContainElement(screen.getByRole("gridcell", { name: "A2" }));
+    expect(screen.getByRole("gridcell", { name: "B2" })).not.toHaveClass("frozen");
   });
 });

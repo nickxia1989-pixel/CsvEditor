@@ -23,10 +23,10 @@
 | 表格编辑 | 键盘导航 | Grid test | 方向键、Tab、Enter/F2 行为稳定 |
 | 锁定 | 锁定/解锁选区 | Grid/App tests | 锁定格不可编辑，删除行列受保护 |
 | 缩放 | 放大/缩小格子 | Grid test + Browser smoke | 行高、列宽、表头同步缩放，布局不溢出 |
-| 冻结 | 冻结到指定格 | Browser smoke | 冻结区域滚动时保持可见且不遮挡 |
+| 冻结 | 默认冻结到 B3、冻结到指定格、取消冻结 | Browser smoke + Grid/App tests | 新 CSV 默认冻结 2 行 / 1 列，取消后刷新仍保持取消；冻结区域滚动时保持可见且不抖动、不遮挡 |
 | 行列操作 | 插入/删除/追加行列 | Grid/App tests | 数据和锁定格坐标同步移动 |
 | 查找替换 | 查找上一处/下一处、替换 | Unit/Grid tests | 大小写不敏感，替换跳过锁定格 |
-| 热刷新 | 干净页签自动刷新 | Tab model/App test | 外部变化自动重读，不长期占用文件 |
+| 热刷新 | 干净页签自动刷新 | Tab model/App test | 每 5 秒检查外部变化并自动重读，不长期占用文件，顶部状态栏不显示热刷新轮询状态 |
 | 热刷新 | 脏页签冲突提示 | Tab model/App test | 有未保存内容时只标记冲突，不覆盖本地编辑 |
 | 保存 | 保存当前/全部保存 | App integration test | 写入前检查磁盘版本，未保存计数归零 |
 | 编码 | UTF-8/GB18030/BOM | Unit test + table scan | 自动识别常见中文表，保存保留 BOM |
@@ -91,6 +91,14 @@
 - Grid component regression: frozen rows/columns use viewport CSS scroll variables; frozen corner, frozen row cells, and frozen column cells keep separate transform paths while normal cells remain untransformed.
 - Browser smoke at `http://127.0.0.1:5173/`: clean run after `2026-06-04T12:12:52Z` produced 0 new console errors; after freezing `B2` and scrolling to `scrollLeft=520 / scrollTop=260`, CSS vars matched scroll state, frozen row/column alignment deltas were 0, and visible frozen cells hit themselves (`F1`, `A11`) instead of being covered by ordinary scrolled cells. Screenshot: `artifacts/csv-editor-freeze-scroll-clean.png`.
 - Browser multi-freeze smoke: clean run after `2026-06-04T12:14:44Z` produced 0 new console errors; after freezing `D4` (`3 行 / 3 列`) and scrolling to `scrollLeft=640 / scrollTop=300`, CSS vars matched scroll state, frozen row/column alignment deltas were 0, and visible frozen cells hit themselves (`I3`, `C15`).
+
+## Verification Run - 2026-06-04 Refresh Interval And Sticky Default Freeze
+
+- `npm test`: 8 files / 57 tests passed after adding coverage for hidden 5s hot refresh interval, default B3 freeze, and manual freeze cancellation persistence.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235899 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; opening `monster.csv` showed `冻结 2 行 / 1 列`, top status text did not contain `热刷新`, sticky freeze layers reported `position: sticky`, A1 had no transform, and 50 samples during scroll to `scrollLeft=700 / scrollTop=320` showed A1 max left/top delta `0 / 0`. Screenshot: `artifacts/csv-editor-sticky-default-b3.png`.
 
 ## Current Known Gaps
 
