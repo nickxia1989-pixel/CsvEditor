@@ -46,6 +46,10 @@ type Notice = {
 } | null;
 
 type NoticeTone = NonNullable<Notice>["tone"];
+type SaveResult = "saved" | "skipped" | "blocked";
+type SaveOptions = {
+  quiet?: boolean;
+};
 
 export function App() {
   const [root, setRoot] = useState<TreeNode | null>(null);
@@ -208,14 +212,16 @@ export function App() {
   );
 
   const saveTab = useCallback(
-    async (id: string) => {
+    async (id: string, options: SaveOptions = {}): Promise<SaveResult> => {
       const tab = tabsRef.current.find((current) => current.id === id);
       if (!tab) {
-        return;
+        return "skipped";
       }
       if (!tab.fileRef.write || !tab.fileRef.writable) {
-        notify("warning", "当前文件是只读来源，不能保存。");
-        return;
+        if (!options.quiet) {
+          notify("warning", "当前文件是只读来源，不能保存。");
+        }
+        return "skipped";
       }
       try {
         const conflictVersion = await getSaveConflictVersion(tab);
@@ -228,13 +234,13 @@ export function App() {
           }));
           const confirmed = window.confirm(`${tab.name} 在磁盘上已变化。保存会覆盖磁盘版本，是否继续？`);
           if (!confirmed) {
-            return;
+            return "blocked";
           }
         }
         if (tab.encoding !== "utf-8") {
           const confirmed = window.confirm(`${tab.name} 当前按 ${tab.encoding.toUpperCase()} 解码。浏览器保存会写成 UTF-8，是否继续？`);
           if (!confirmed) {
-            return;
+            return "blocked";
           }
         }
         const text = unparseCsvData(tab.data, tab.delimiter, tab.newline, tab.hasBom);
@@ -250,13 +256,48 @@ export function App() {
             status: "已保存"
           })
         );
-        notify("success", `已保存 ${tab.name}`);
+        if (!options.quiet) {
+          notify("success", `已保存 ${tab.name}`);
+        }
+        return "saved";
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
+        return "blocked";
       }
     },
     [notify, patchTab]
   );
+
+  const saveAllDirtyTabs = useCallback(async () => {
+    const dirtyTabs = tabsRef.current.filter((tab) => tab.dirty);
+    if (dirtyTabs.length === 0) {
+      notify("info", "没有需要保存的 CSV。");
+      return;
+    }
+
+    let saved = 0;
+    let skipped = 0;
+    let blocked = 0;
+    for (const tab of dirtyTabs) {
+      const result = await saveTab(tab.id, { quiet: true });
+      if (result === "saved") {
+        saved += 1;
+      } else if (result === "skipped") {
+        skipped += 1;
+      } else {
+        blocked += 1;
+      }
+    }
+
+    const parts = [`已保存 ${saved} 个`];
+    if (skipped > 0) {
+      parts.push(`跳过只读 ${skipped} 个`);
+    }
+    if (blocked > 0) {
+      parts.push(`未完成 ${blocked} 个`);
+    }
+    notify(blocked > 0 ? "warning" : "success", parts.join("，"));
+  }, [notify, saveTab]);
 
   const closeTab = useCallback(
     (id: string) => {
@@ -403,6 +444,15 @@ export function App() {
             >
               <Save size={15} />
               保存
+            </button>
+            <button
+              className="toolbar-button"
+              disabled={dirtyCount === 0}
+              onClick={() => void saveAllDirtyTabs()}
+              title="保存所有未保存且可写的 CSV"
+            >
+              <Save size={15} />
+              全部保存
             </button>
           </div>
         </header>
