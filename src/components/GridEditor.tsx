@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Columns3, Lock, Minus, Plus, Rows3, Unlock } from "lucide-react";
+import { ChevronDown, ChevronUp, Columns3, Lock, Minus, Pause, Play, Plus, Rows3, Search, Unlock } from "lucide-react";
 import {
+  findCell,
   maxColumnCount,
   matrixToTsv,
   parseTsv,
@@ -26,6 +27,8 @@ type GridEditorProps = {
   onSetZoom(zoom: number): void;
   onSetFreeze(rows: number, cols: number): void;
   onSetColWidth(col: number, width: number): void;
+  onSetAutoRefresh(enabled: boolean): void;
+  onSetFindQuery(query: string): void;
   onAddRow(): void;
   onAddColumn(): void;
 };
@@ -53,6 +56,8 @@ export function GridEditor({
   onSetZoom,
   onSetFreeze,
   onSetColWidth,
+  onSetAutoRefresh,
+  onSetFindQuery,
   onAddRow,
   onAddColumn
 }: GridEditorProps) {
@@ -195,6 +200,7 @@ export function GridEditor({
   const selectedLabel = `${columnName(tab.selection.focusCol)}${tab.selection.focusRow + 1}`;
   const selectedLocked = lockedSet.has(cellKey(tab.selection.focusRow, tab.selection.focusCol));
   const rangeLocked = rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+  const findAvailable = tab.findQuery.trim().length > 0;
 
   const commitEditing = () => {
     if (!editing) {
@@ -225,6 +231,13 @@ export function GridEditor({
         ? { ...tab.selection, focusRow: nextRow, focusCol: nextCol }
         : singleCellSelection(nextRow, nextCol)
     );
+  };
+
+  const runFind = (direction: "next" | "previous") => {
+    const result = findCell(tab.data, tab.findQuery, tab.selection.focusRow, tab.selection.focusCol, direction);
+    if (result) {
+      onSelectionChange(singleCellSelection(result.row, result.col));
+    }
   };
 
   const handleGridKeyDown = async (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -366,6 +379,34 @@ export function GridEditor({
         </button>
         <button className="tool-button" onClick={onAddColumn}>
           增列
+        </button>
+        <label className="grid-search">
+          <Search size={15} />
+          <input
+            value={tab.findQuery}
+            onChange={(event) => onSetFindQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                runFind(event.shiftKey ? "previous" : "next");
+              }
+            }}
+            placeholder="查找"
+          />
+        </label>
+        <button className="icon-button" onClick={() => runFind("previous")} disabled={!findAvailable} title="上一处">
+          <ChevronUp size={15} />
+        </button>
+        <button className="icon-button" onClick={() => runFind("next")} disabled={!findAvailable} title="下一处">
+          <ChevronDown size={15} />
+        </button>
+        <button
+          className={`tool-button ${tab.autoRefresh ? "active-toggle" : ""}`}
+          onClick={() => onSetAutoRefresh(!tab.autoRefresh)}
+          title={tab.autoRefresh ? "磁盘变化时自动刷新干净页签" : "暂停自动应用磁盘变化，只标记提示"}
+        >
+          {tab.autoRefresh ? <Play size={15} /> : <Pause size={15} />}
+          {tab.autoRefresh ? "自动热刷" : "热刷暂停"}
         </button>
       </div>
 

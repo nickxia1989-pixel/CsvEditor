@@ -170,7 +170,18 @@ export function App() {
       }
       try {
         const reloaded = await reloadTabFromFileRef(tab);
-        patchTab(id, (current) => ({ ...reloaded, id: current.id, selection: current.selection }));
+        patchTab(id, (current) => ({
+          ...reloaded,
+          id: current.id,
+          selection: current.selection,
+          lockedCells: current.lockedCells,
+          zoom: current.zoom,
+          freezeRows: current.freezeRows,
+          freezeCols: current.freezeCols,
+          colWidths: current.colWidths,
+          autoRefresh: current.autoRefresh,
+          findQuery: current.findQuery
+        }));
         notify("success", `已刷新 ${tab.name}`);
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
@@ -465,6 +476,15 @@ export function App() {
             onSetColWidth={(col, width) =>
               updateActiveTab((tab) => ({ ...tab, colWidths: { ...tab.colWidths, [col]: width } }))
             }
+            onSetAutoRefresh={(enabled) =>
+              updateActiveTab((tab) => ({
+                ...tab,
+                autoRefresh: enabled,
+                externalChanged: enabled && !tab.dirty ? false : tab.externalChanged,
+                status: enabled ? "已开启自动热刷" : "已暂停自动热刷"
+              }))
+            }
+            onSetFindQuery={(findQuery) => updateActiveTab((tab) => ({ ...tab, findQuery }))}
             onAddRow={() =>
               updateActiveTab((tab) => ({
                 ...tab,

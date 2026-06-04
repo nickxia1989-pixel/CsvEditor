@@ -119,3 +119,39 @@ export function parseTsv(text: string): string[][] {
 export function maxColumnCount(data: CsvMatrix): number {
   return data.reduce((max, row) => Math.max(max, row.length), 0);
 }
+
+export function findCell(
+  data: CsvMatrix,
+  query: string,
+  fromRow: number,
+  fromCol: number,
+  direction: "next" | "previous"
+): { row: number; col: number } | null {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const rowCount = data.length;
+  const colCount = maxColumnCount(data);
+  const totalCells = rowCount * colCount;
+  if (totalCells === 0 || colCount === 0) {
+    return null;
+  }
+
+  const clampedRow = Math.max(0, Math.min(rowCount - 1, fromRow));
+  const clampedCol = Math.max(0, Math.min(colCount - 1, fromCol));
+  const startIndex = clampedRow * colCount + clampedCol;
+  const step = direction === "next" ? 1 : -1;
+
+  for (let offset = 1; offset <= totalCells; offset += 1) {
+    const index = (startIndex + step * offset + totalCells) % totalCells;
+    const row = Math.floor(index / colCount);
+    const col = index % colCount;
+    if (readCell(data, row, col).toLowerCase().includes(normalizedQuery)) {
+      return { row, col };
+    }
+  }
+
+  return null;
+}

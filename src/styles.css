@@ -448,6 +448,12 @@ button:disabled {
   white-space: nowrap;
 }
 
+.tool-button.active-toggle {
+  border-color: #8fbfb9;
+  background: #e7f4f2;
+  color: var(--accent-strong);
+}
+
 .icon-button {
   width: 28px;
   min-height: 28px;
@@ -462,6 +468,28 @@ button:disabled {
   min-width: 42px;
   color: var(--text-soft);
   font-size: 12px;
+}
+
+.grid-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 160px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--text-soft);
+}
+
+.grid-search input {
+  min-width: 0;
+  width: 108px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #172026;
 }
 
 .grid-viewport {

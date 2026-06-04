@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  findCell,
   matrixToTsv,
   parseCsvText,
   parseTsv,
@@ -62,5 +63,16 @@ describe("csv helpers", () => {
     expect(parsed.hasBom).toBe(true);
     expect(parsed.data[0][0]).toBe("A");
     expect(unparseCsvData(parsed.data, parsed.delimiter, parsed.newline, parsed.hasBom).startsWith("\uFEFF")).toBe(true);
+  });
+
+  it("finds cells forward, backward, and with wrapping", () => {
+    const data = [
+      ["ID", "Name"],
+      ["1001", "Training Slime"],
+      ["1002", "Forest Wolf"]
+    ];
+    expect(findCell(data, "forest", 0, 0, "next")).toEqual({ row: 2, col: 1 });
+    expect(findCell(data, "name", 0, 0, "previous")).toEqual({ row: 0, col: 1 });
+    expect(findCell(data, "missing", 0, 0, "next")).toBeNull();
   });
 });

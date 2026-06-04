@@ -23,6 +23,7 @@ export type CsvTab = {
   dirty: boolean;
   externalChanged: boolean;
   autoRefresh: boolean;
+  findQuery: string;
   lockedCells: string[];
   selection: CsvSelection;
   zoom: number;
