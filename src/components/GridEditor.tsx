@@ -100,8 +100,10 @@ export function GridEditor({
   onAddColumn
 }: GridEditorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const keyProxyRef = useRef<HTMLInputElement | null>(null);
   const viewportFrameRef = useRef<number | null>(null);
   const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
+  const composingInputRef = useRef(false);
   const [viewport, setViewport] = useState<ViewportState>({
     width: 800,
     height: 500,
@@ -299,8 +301,11 @@ export function GridEditor({
     setDragging(false);
   }, [tab.id]);
 
-  const focusViewportSoon = () => {
-    window.requestAnimationFrame(() => viewportRef.current?.focus({ preventScroll: true }));
+  const focusGridInputSoon = () => {
+    window.requestAnimationFrame(() => {
+      const target = keyProxyRef.current ?? viewportRef.current;
+      target?.focus({ preventScroll: true });
+    });
   };
 
   const commitEditing = (refocusGrid = false) => {
@@ -312,7 +317,7 @@ export function GridEditor({
     }
     setEditing(null);
     if (refocusGrid) {
-      focusViewportSoon();
+      focusGridInputSoon();
     }
   };
 
@@ -326,6 +331,28 @@ export function GridEditor({
       col,
       value: seed ?? readCell(tab.data, row, col)
     });
+  };
+
+  const beginEditFromKeyboardText = (text: string) => {
+    if (!text) {
+      return;
+    }
+    beginEdit(tab.selection.focusRow, tab.selection.focusCol, text);
+    if (keyProxyRef.current) {
+      keyProxyRef.current.value = "";
+    }
+  };
+
+  const handleKeyProxyChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (editing || composingInputRef.current) {
+      return;
+    }
+    beginEditFromKeyboardText(event.currentTarget.value);
+  };
+
+  const handleKeyProxyCompositionEnd = (event: React.CompositionEvent<HTMLInputElement>) => {
+    composingInputRef.current = false;
+    beginEditFromKeyboardText(event.currentTarget.value || event.data);
   };
 
   const updateDragSelection = (row: number, col: number) => {
@@ -492,6 +519,9 @@ export function GridEditor({
     if (editing) {
       return;
     }
+    if (event.target === keyProxyRef.current) {
+      return;
+    }
     const nativeEvent = event.nativeEvent as InputEvent;
     const text = nativeEvent.data;
     if (!text || nativeEvent.inputType === "insertLineBreak") {
@@ -536,7 +566,7 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         onSelectionChange({ anchorRow: realEndRow, anchorCol: col, focusRow: 0, focusCol: col });
-        viewportRef.current?.focus();
+        focusGridInputSoon();
       }}
     >
       {columnName(col)}
@@ -570,7 +600,7 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
-        viewportRef.current?.focus();
+        focusGridInputSoon();
       }}
     >
       {row + 1}
@@ -617,7 +647,7 @@ export function GridEditor({
           dragAnchorRef.current = { row, col };
           setDragging(true);
           onSelectionChange(singleCellSelection(row, col));
-          viewportRef.current?.focus();
+          focusGridInputSoon();
         }}
         onPointerEnter={() => {
           updateDragSelection(row, col);
@@ -641,7 +671,7 @@ export function GridEditor({
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 setEditing(null);
-                focusViewportSoon();
+                focusGridInputSoon();
               } else if (event.key === "Tab") {
                 event.preventDefault();
                 commitEditing(true);
@@ -803,6 +833,22 @@ export function GridEditor({
           }
         }}
       >
+        <input
+          ref={keyProxyRef}
+          className="grid-key-proxy"
+          aria-label="Grid keyboard input"
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          tabIndex={-1}
+          onChange={handleKeyProxyChange}
+          onCompositionStart={() => {
+            composingInputRef.current = true;
+          }}
+          onCompositionEnd={handleKeyProxyCompositionEnd}
+        />
+
         <div
           className="grid-freeze-layer grid-freeze-top"
           data-testid="grid-freeze-top"
@@ -843,7 +889,7 @@ export function GridEditor({
             onPointerDown={(event) => {
               event.preventDefault();
               onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
-              viewportRef.current?.focus();
+              focusGridInputSoon();
             }}
           />
           {frozenCols.map((col) => renderColumnHeader(col, "freeze-corner", "frozen-row frozen-col"))}

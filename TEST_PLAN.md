@@ -128,6 +128,14 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; ArrowRight moved selection from `B2` to `C2` without scrolling, column/row header selection focused `B1`/`A2` instead of the last cell, double-click editor stayed active while dragging inside the input, and after editing `B2` then pressing Enter, typing immediately opened editing on `B3`.
 
+## Verification Run - 2026-06-05 IME Keyboard Proxy
+
+- `npm test`: 8 files / 69 tests passed after adding regressions for the hidden keyboard input proxy, arrow-key bubbling from the proxy, and IME composition commit opening the inline editor with the committed text.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; after selecting `B2`, focus moved to the hidden `Grid keyboard input`, ArrowRight moved to `C2` without scrolling, typing `K` opened the editor, Enter committed and moved to `C3`, and typing `N` immediately opened editing on `C3`.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

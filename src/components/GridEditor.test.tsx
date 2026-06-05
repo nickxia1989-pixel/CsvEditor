@@ -215,9 +215,10 @@ describe("GridEditor toolbar", () => {
     ]);
   });
 
-  it("opens an editor from keyboard input and returns focus to the grid after Enter", async () => {
+  it("opens an editor from keyboard input and returns focus to the keyboard proxy after Enter", async () => {
     const { container, props } = renderGridWithResult();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
 
     fireEvent.keyDown(grid, { key: "x" });
     const editor = container.querySelector(".cell-editor") as HTMLInputElement;
@@ -228,7 +229,35 @@ describe("GridEditor toolbar", () => {
 
     expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "x");
     expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(1, 0));
-    await waitFor(() => expect(document.activeElement).toBe(grid));
+    await waitFor(() => expect(document.activeElement).toBe(keyProxy));
+  });
+
+  it("uses the keyboard proxy for focus while keeping arrow keys on grid navigation", async () => {
+    const props = renderGrid();
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A1" }));
+    await waitFor(() => expect(document.activeElement).toBe(keyProxy));
+
+    fireEvent.keyDown(keyProxy, { key: "ArrowRight" });
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
+  });
+
+  it("opens editing from an IME composition committed through the keyboard proxy", () => {
+    const { container } = renderGridWithResult();
+    const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;
+
+    fireEvent.compositionStart(keyProxy);
+    fireEvent.change(keyProxy, { target: { value: "ni" } });
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+
+    keyProxy.value = "你";
+    fireEvent.compositionEnd(keyProxy, { data: "你" });
+
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("你");
   });
 
   it("lets the inline editor handle pointer selection without changing the grid selection", () => {

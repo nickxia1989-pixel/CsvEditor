@@ -597,6 +597,24 @@ button:disabled {
   border-color: var(--accent);
 }
 
+.grid-viewport:focus-within {
+  border-color: var(--accent);
+}
+
+.grid-key-proxy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0.01;
+  pointer-events: none;
+  caret-color: transparent;
+}
+
 .grid-canvas {
   position: relative;
 }
