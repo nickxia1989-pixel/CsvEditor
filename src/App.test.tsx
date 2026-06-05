@@ -313,6 +313,74 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe('34,测试lilifute ,测试\r\n,,\r\n""\r\n35,伊莉亚,测试\r\n');
   });
 
+  it("preserves raw field formatting after inserting a column", async () => {
+    const original = '34,"keep,comma",测试lilifute \r\n35,伊莉亚,测试\r\n';
+    const file = new MockFileHandle("insert-column-format.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["insert-column-format.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "insert-column-format.csv" }));
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "Column B" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }));
+    fireEvent.click(screen.getByRole("button", { name: "插列" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe('34,,"keep,comma",测试lilifute \r\n35,,伊莉亚,测试\r\n');
+  });
+
+  it("preserves raw field formatting after deleting a column", async () => {
+    const original = '34,"keep,comma",测试lilifute \r\n35,伊莉亚,测试\r\n';
+    const file = new MockFileHandle("delete-column-format.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["delete-column-format.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "delete-column-format.csv" }));
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "Column B" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }));
+    fireEvent.click(screen.getByRole("button", { name: "删列" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe('34,测试lilifute \r\n35,测试\r\n');
+  });
+
+  it("preserves raw field formatting after appending a column", async () => {
+    const original = '34,"keep,comma",测试lilifute \r\n35,伊莉亚,测试\r\n';
+    const file = new MockFileHandle("append-column-format.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["append-column-format.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "append-column-format.csv" }));
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "Column C" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "增列" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe('34,"keep,comma",测试lilifute ,\r\n35,伊莉亚,测试,\r\n');
+  });
+
   it("does not open duplicate tabs for the same CSV path", async () => {
     const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
     const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");

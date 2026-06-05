@@ -25,7 +25,8 @@ import {
   replaceCellText,
   readCell,
   unparseCsvData,
-  writeCell
+  writeCell,
+  type CsvSourceRow
 } from "./lib/csv";
 import { canPickDirectory, pickDirectory, versionEquals, type CsvFileRef } from "./lib/fileRefs";
 import {
@@ -827,9 +828,18 @@ export function App() {
               updateActiveTab((tab) => {
                 const base = pushUndo(tab);
                 const count = endCol - startCol + 1;
+                const nextData = insertColumns(base.data, startCol, count);
                 return {
                   ...base,
-                  data: insertColumns(base.data, startCol, count),
+                  data: nextData,
+                  sourceRows: insertSourceColumns(
+                    base.sourceRows,
+                    base.data,
+                    startCol,
+                    count,
+                    base.delimiter,
+                    nextData
+                  ),
                   lockedCells: shiftLockedCellsForInsertedColumns(base.lockedCells, startCol, count),
                   selection: singleCellSelection(base.selection.focusRow, startCol),
                   dirty: true,
@@ -853,6 +863,14 @@ export function App() {
                 return {
                   ...base,
                   data: nextData,
+                  sourceRows: deleteSourceColumns(
+                    base.sourceRows,
+                    base.data,
+                    startCol,
+                    clampedEndCol,
+                    base.delimiter,
+                    nextData
+                  ),
                   lockedCells: shiftLockedCellsForDeletedColumns(base.lockedCells, startCol, clampedEndCol),
                   selection: singleCellSelection(base.selection.focusRow, nextCol),
                   dirty: true,
@@ -876,17 +894,26 @@ export function App() {
               updateActiveTab((tab) => {
                 const base = pushUndo(tab);
                 const width = maxColumnCount(base.data);
+                const nextData = base.data.length
+                  ? base.data.map((row) => {
+                      const normalized = [...row];
+                      while (normalized.length < width) {
+                        normalized.push("");
+                      }
+                      return [...normalized, ""];
+                    })
+                  : [[""]];
                 return {
                   ...base,
-                  data: base.data.length
-                    ? base.data.map((row) => {
-                        const normalized = [...row];
-                        while (normalized.length < width) {
-                          normalized.push("");
-                        }
-                        return [...normalized, ""];
-                      })
-                    : [[""]],
+                  data: nextData,
+                  sourceRows: insertSourceColumns(
+                    base.sourceRows,
+                    base.data,
+                    width,
+                    1,
+                    base.delimiter,
+                    nextData
+                  ),
                   dirty: true,
                   status: "已新增列"
                 };
@@ -950,6 +977,103 @@ function deleteSourceRows(sourceRows: CsvTab["sourceRows"], startRow: number, en
   const start = clamp(normalizedStart, 0, sourceRows.length - 1);
   const end = clamp(normalizedEnd, 0, sourceRows.length - 1);
   return [...sourceRows.slice(0, start), ...sourceRows.slice(end + 1)];
+}
+
+function insertSourceColumns(
+  sourceRows: CsvTab["sourceRows"],
+  currentData: CsvTab["data"],
+  atCol: number,
+  count: number,
+  delimiter: string,
+  nextData: CsvTab["data"]
+): CsvTab["sourceRows"] {
+  const columnCount = Math.max(1, count);
+  const target = Math.max(0, atCol);
+  return nextData.map((row, index) => {
+    const sourceRow = sourceRows[index];
+    const currentRow = currentData[index] ?? [];
+    if (!canTransformSourceColumns(sourceRow, currentRow)) {
+      return undefined;
+    }
+    const fields = [...sourceRow.fields!];
+    const data = [...sourceRow.data];
+    while (fields.length < target) {
+      fields.push("");
+      data.push("");
+    }
+    const nextFields = [
+      ...fields.slice(0, target),
+      ...Array.from({ length: columnCount }, () => ""),
+      ...fields.slice(target)
+    ];
+    const nextSourceData = [
+      ...data.slice(0, target),
+      ...Array.from({ length: columnCount }, () => ""),
+      ...data.slice(target)
+    ];
+    if (!rowsEqual(row, nextSourceData)) {
+      return undefined;
+    }
+    return makeSourceRowFromFields(nextSourceData, nextFields, delimiter);
+  });
+}
+
+function deleteSourceColumns(
+  sourceRows: CsvTab["sourceRows"],
+  currentData: CsvTab["data"],
+  startCol: number,
+  endCol: number,
+  delimiter: string,
+  nextData: CsvTab["data"]
+): CsvTab["sourceRows"] {
+  const width = maxColumnCount(currentData);
+  if (width === 0) {
+    return nextData.map(() => undefined);
+  }
+  const start = clamp(Math.min(startCol, endCol), 0, width - 1);
+  const end = clamp(Math.max(startCol, endCol), 0, width - 1);
+  return nextData.map((row, index) => {
+    const sourceRow = sourceRows[index];
+    const currentRow = currentData[index] ?? [];
+    if (!canTransformSourceColumns(sourceRow, currentRow)) {
+      return undefined;
+    }
+    const nextFields = [...sourceRow.fields!.slice(0, start), ...sourceRow.fields!.slice(end + 1)];
+    const nextSourceData = [...sourceRow.data.slice(0, start), ...sourceRow.data.slice(end + 1)];
+    const normalizedFields = nextFields.length > 0 ? nextFields : [""];
+    const normalizedData = nextSourceData.length > 0 ? nextSourceData : [""];
+    if (!rowsEqual(row, normalizedData)) {
+      return undefined;
+    }
+    return makeSourceRowFromFields(normalizedData, normalizedFields, delimiter);
+  });
+}
+
+function canTransformSourceColumns(
+  sourceRow: CsvSourceRow | undefined,
+  currentRow: string[]
+): sourceRow is CsvSourceRow & { fields: string[] } {
+  return Boolean(
+    sourceRow?.fields &&
+      sourceRow.fields.length === sourceRow.data.length &&
+      rowsEqual(currentRow, sourceRow.data)
+  );
+}
+
+function makeSourceRowFromFields(data: string[], fields: string[], delimiter: string): CsvSourceRow {
+  const separator = delimiter || ",";
+  return {
+    raw: fields.join(separator),
+    data: [...data],
+    fields: [...fields]
+  };
+}
+
+function rowsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
 }
 
 function clamp(value: number, min: number, max: number): number {
