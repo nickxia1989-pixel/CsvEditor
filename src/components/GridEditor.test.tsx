@@ -118,6 +118,37 @@ describe("GridEditor editing workflow", () => {
     await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入"));
   });
 
+  it("cuts the selected TSV range only after clipboard write succeeds", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid(createTab({
+      selection: {
+        anchorRow: 2,
+        anchorCol: 1,
+        focusRow: 1,
+        focusCol: 0
+      }
+    }));
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "x", ctrlKey: true });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("1001\tTraining Slime\n1002\tForest Wolf"));
+    expect(props.onClearRange).toHaveBeenCalledWith(1, 0, 2, 1);
+    expect(props.onSetStatus).toHaveBeenCalledWith("已剪切 2 x 2");
+  });
+
+  it("does not clear the selected range when cut clipboard write fails", async () => {
+    const props = renderGrid();
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "x", ctrlKey: true });
+
+    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("剪切失败：浏览器未允许剪贴板写入"));
+    expect(props.onClearRange).not.toHaveBeenCalled();
+  });
+
   it("cancels inline editing when switching to another tab", () => {
     const { container, props, rerender } = renderGridWithResult(createTab({ id: "tab-1" }));
 
@@ -248,6 +279,22 @@ describe("GridEditor toolbar", () => {
       ["X", "X"],
       ["X", "X"]
     ]);
+  });
+
+  it("cuts through the keyboard proxy when it owns focus", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid();
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "x", ctrlKey: true });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ID"));
+    expect(props.onClearRange).toHaveBeenCalledWith(0, 0, 0, 0);
+    expect(props.onSetStatus).toHaveBeenCalledWith("已剪切 1 x 1");
   });
 
   it("selects the used range with Ctrl+A from the keyboard proxy", () => {

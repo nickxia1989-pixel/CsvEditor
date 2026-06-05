@@ -452,6 +452,29 @@ export function GridEditor({
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
+      event.preventDefault();
+      const text = matrixToTsv(
+        tab.data,
+        selectionRange.startRow,
+        selectionRange.startCol,
+        selectionRange.endRow,
+        selectionRange.endCol
+      );
+      try {
+        if (!navigator.clipboard?.writeText) {
+          throw new Error("Clipboard API unavailable");
+        }
+        await navigator.clipboard.writeText(text);
+        setCopiedRange(null);
+        onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+        onSetStatus(`已剪切 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
+      } catch {
+        onSetStatus("剪切失败：浏览器未允许剪贴板写入");
+      }
+      return;
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
       event.preventDefault();
       const text = matrixToTsv(
