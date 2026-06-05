@@ -97,6 +97,38 @@ describe("csv helpers", () => {
     )).toBe('34,测试lilifute ,测试\r\n""\r\n35,伊莉亚改,测试\r\n');
   });
 
+  it("preserves unchanged raw fields inside a changed source row", () => {
+    const original = '34,测试lilifute ,测试\r\n';
+    const parsed = parseCsvText(original);
+    const next = parsed.data.map((row) => [...row]);
+    next[0][0] = "340";
+
+    expect(unparseCsvData(
+      next,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe('340,测试lilifute ,测试\r\n');
+  });
+
+  it("serializes changed fields while preserving unchanged raw neighbors", () => {
+    const original = '34,测试lilifute ,测试\r\n';
+    const parsed = parseCsvText(original);
+    const next = parsed.data.map((row) => [...row]);
+    next[0][2] = "new,value";
+
+    expect(unparseCsvData(
+      next,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe('34,测试lilifute ,"new,value"\r\n');
+  });
+
   it("strips BOM while parsing and restores it when serializing", () => {
     const parsed = parseCsvText("\uFEFFA,B\n1,2");
     expect(parsed.hasBom).toBe(true);

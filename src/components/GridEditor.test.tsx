@@ -279,6 +279,20 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
   });
 
+  it("lets the keyboard proxy input event seed text editing instead of printable keydown", () => {
+    const { container } = renderGridWithResult();
+    const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;
+
+    fireEvent.keyDown(keyProxy, { key: "n" });
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+
+    fireEvent.change(keyProxy, { target: { value: "n" } });
+
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("n");
+  });
+
   it("opens editing from an IME composition committed through the keyboard proxy", () => {
     const { container } = renderGridWithResult();
     const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;

@@ -239,6 +239,28 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe('34,测试lilifute ,测试\r\n""\r\n350,伊莉亚,测试\r\n');
   });
 
+  it("preserves unchanged field formatting inside an edited CSV row", async () => {
+    const original = '34,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n';
+    const file = new MockFileHandle("same-row-format.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["same-row-format.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "same-row-format.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "340" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe('340,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n');
+  });
+
   it("keeps source row formatting aligned after inserting a row", async () => {
     const original = '34,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n';
     const file = new MockFileHandle("insert-format.csv", original);

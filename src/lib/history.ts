@@ -75,5 +75,7 @@ function restoreSnapshot(tab: CsvTab, snapshot: CsvTabHistorySnapshot, status: s
 }
 
 function cloneSourceRows(sourceRows: CsvTab["sourceRows"]): CsvTab["sourceRows"] {
-  return sourceRows.map((row) => (row ? { raw: row.raw, data: [...row.data] } : undefined));
+  return sourceRows.map((row) =>
+    row ? { raw: row.raw, data: [...row.data], fields: row.fields ? [...row.fields] : undefined } : undefined
+  );
 }

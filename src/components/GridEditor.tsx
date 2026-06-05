@@ -509,6 +509,9 @@ export function GridEditor({
     if (event.nativeEvent.isComposing || event.key === "Process") {
       return;
     }
+    if (event.target === keyProxyRef.current) {
+      return;
+    }
     if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       beginEdit(tab.selection.focusRow, tab.selection.focusCol, event.key);

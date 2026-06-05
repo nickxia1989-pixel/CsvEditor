@@ -13,6 +13,7 @@ export type ParsedCsv = {
 export type CsvSourceRow = {
   raw: string;
   data: string[];
+  fields?: string[];
 };
 
 export function detectNewline(text: string): string {
@@ -43,16 +44,21 @@ export function parseCsvText(text: string): ParsedCsv {
     }
   }
 
+  const delimiter = parsed.meta.delimiter || ",";
   const rawRows = splitCsvRecords(normalizedText);
   return {
     data,
-    delimiter: parsed.meta.delimiter || ",",
+    delimiter,
     newline: detectNewline(normalizedText),
     hasBom,
-    sourceRows: data.map((row, index) => ({
-      raw: rawRows[index] ?? unparseCsvData([row], parsed.meta.delimiter || ",", "\n", false),
-      data: [...row]
-    })),
+    sourceRows: data.map((row, index) => {
+      const raw = rawRows[index] ?? unparseCsvData([row], delimiter, "\n", false);
+      return {
+        raw,
+        data: [...row],
+        fields: splitCsvFields(raw, delimiter)
+      };
+    }),
     trailingNewline: normalizedText.length > 0 && /(\r\n|\n|\r)$/.test(normalizedText)
   };
 }
@@ -66,14 +72,19 @@ export function unparseCsvData(
   trailingNewline = false
 ): string {
   const separator = newline || "\n";
+  const normalizedDelimiter = delimiter || ",";
   const text = data
     .map((row, index) => {
       const sourceRow = sourceRows[index];
       if (sourceRow && rowsEqual(row, sourceRow.data)) {
         return sourceRow.raw;
       }
+      const preservedRow = sourceRow ? unparseCsvRowWithSource(row, normalizedDelimiter, sourceRow) : null;
+      if (preservedRow !== null) {
+        return preservedRow;
+      }
       return Papa.unparse([row], {
-        delimiter: delimiter || ",",
+        delimiter: normalizedDelimiter,
         newline: separator
       });
     })
@@ -224,6 +235,47 @@ function splitCsvRecords(text: string): string[] {
     rows.push(text.slice(start));
   }
   return rows;
+}
+
+function splitCsvFields(row: string, delimiter: string): string[] {
+  const separator = delimiter || ",";
+  const fields: string[] = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let index = 0; index < row.length; index += 1) {
+    const char = row[index];
+    if (char === '"') {
+      if (inQuotes && row[index + 1] === '"') {
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (!inQuotes && row.startsWith(separator, index)) {
+      fields.push(row.slice(start, index));
+      index += separator.length - 1;
+      start = index + 1;
+    }
+  }
+  fields.push(row.slice(start));
+  return fields;
+}
+
+function unparseCsvRowWithSource(row: string[], delimiter: string, sourceRow: CsvSourceRow): string | null {
+  if (!sourceRow.fields || sourceRow.fields.length !== row.length || sourceRow.data.length !== row.length) {
+    return null;
+  }
+  return row
+    .map((value, index) => (value === sourceRow.data[index] ? sourceRow.fields![index] : serializeCsvField(value, delimiter)))
+    .join(delimiter);
+}
+
+function serializeCsvField(value: string, delimiter: string): string {
+  if (!value.includes('"') && !value.includes("\r") && !value.includes("\n") && !value.includes(delimiter)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function rowsEqual(left: string[], right: string[]): boolean {

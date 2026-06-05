@@ -146,6 +146,16 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 console errors; sample `monster.csv` loaded; ArrowRight moved selection through the keyboard proxy, typing `K` opened editing, Enter committed and returned focus to `Grid keyboard input`; sidebar drag changed width from `310px` to `430px`, grid resized from `931px` to `811px` wide without document-level horizontal overflow. Native clipboard shortcut injection remains disabled in this browser automation environment, so proxy Ctrl+C/Ctrl+V is covered by component tests.
 
+## Verification Run - 2026-06-05 Field-Level Format Preservation
+
+- CSV save hardening: source row metadata now stores raw field slices, so editing one field in a row preserves unchanged neighboring fields exactly instead of reserializing the whole row. This specifically covers rows like `34,测试lilifute ,测试`, where changing `34` must not turn the untouched trailing-space field into `"测试lilifute "`.
+- IME safety hardening: printable keydown events from the hidden `Grid keyboard input` no longer preempt text insertion; text editing is seeded by the proxy input/change or composition path, while Arrow/Enter/Ctrl shortcuts still bubble to grid navigation and commands.
+- `npm test`: 8 files / 76 tests passed after adding same-row CSV format preservation, changed-field escaping with raw neighbor preservation, source-field history cloning, and keyboard-proxy printable keydown regressions.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; proxy-focused ArrowRight moved selection, pressing `K` opened an editor with `K`, Enter committed and returned focus to `Grid keyboard input`; grid viewport stayed `931 x 512`; console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

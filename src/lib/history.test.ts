@@ -3,6 +3,10 @@ import { pushUndo, redoTab, undoTab } from "./history";
 import type { CsvTab } from "../types";
 import { singleCellSelection } from "../types";
 
+function makeSourceRows(): CsvTab["sourceRows"] {
+  return [{ raw: '"A"', data: ["A"], fields: ['"A"'] }];
+}
+
 function makeTab(): CsvTab {
   return {
     id: "tab-1",
@@ -19,7 +23,7 @@ function makeTab(): CsvTab {
     delimiter: ",",
     newline: "\n",
     hasBom: false,
-    sourceRows: [{ raw: '"A"', data: ["A"] }],
+    sourceRows: makeSourceRows(),
     trailingNewline: false,
     encoding: "utf-8",
     version: { lastModified: 1, size: 1 },
@@ -51,7 +55,7 @@ describe("history", () => {
 
     const undone = undoTab(edited);
     expect(undone.data).toEqual([["A"]]);
-    expect(undone.sourceRows).toEqual([{ raw: '"A"', data: ["A"] }]);
+    expect(undone.sourceRows).toEqual(makeSourceRows());
     expect(undone.dirty).toBe(false);
     expect(undone.redoStack).toHaveLength(1);
 
@@ -75,6 +79,6 @@ describe("history", () => {
     const withHistory = pushUndo(original);
     withHistory.sourceRows[0]!.data[0] = "mutated";
 
-    expect(undoTab(withHistory).sourceRows).toEqual([{ raw: '"A"', data: ["A"] }]);
+    expect(undoTab(withHistory).sourceRows).toEqual(makeSourceRows());
   });
 });
