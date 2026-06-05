@@ -239,6 +239,17 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` opened, default `冻结 2 行 / 2 列` remained visible, grid viewport stayed inside the workspace, and console error log was empty.
 
+## Verification Run - 2026-06-05 Widened Row Format Preservation
+
+- CSV save hardening: changing a virtual new column now preserves original raw fields for the existing row prefix and only serializes the new or changed field, avoiding full-row reserialization when a row gets wider through direct edit or paste.
+- `npm test -- src/lib/csv.test.ts`: 1 file / 16 tests passed after adding widened-row source-field preservation coverage.
+- `npm test -- src/App.test.tsx`: 1 file / 30 tests passed after adding a virtual-new-column save-format regression.
+- `npm test`: 8 files / 96 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` opened, default `冻结 2 行 / 2 列` remained visible, grid viewport stayed inside the workspace, and console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

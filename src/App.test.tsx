@@ -290,6 +290,29 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe('340,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n');
   });
 
+  it("preserves raw field formatting when editing a virtual new column", async () => {
+    const original = '34,"keep,comma",测试lilifute \r\n35,伊莉亚,测试\r\n';
+    const file = new MockFileHandle("virtual-column-format.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["virtual-column-format.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "virtual-column-format.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "D1" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "D1" }), { clientX: 450, clientY: 70 });
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "added" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe('34,"keep,comma",测试lilifute ,added\r\n35,伊莉亚,测试\r\n');
+  });
+
   it("keeps source row formatting aligned after inserting a row", async () => {
     const original = '34,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n';
     const file = new MockFileHandle("insert-format.csv", original);

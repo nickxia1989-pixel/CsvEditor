@@ -278,11 +278,15 @@ function splitCsvFields(row: string, delimiter: string): string[] {
 }
 
 function unparseCsvRowWithSource(row: string[], delimiter: string, sourceRow: CsvSourceRow): string | null {
-  if (!sourceRow.fields || sourceRow.fields.length !== row.length || sourceRow.data.length !== row.length) {
+  if (!sourceRow.fields || sourceRow.fields.length !== sourceRow.data.length) {
     return null;
   }
   return row
-    .map((value, index) => (value === sourceRow.data[index] ? sourceRow.fields![index] : serializeCsvField(value, delimiter)))
+    .map((value, index) =>
+      index < sourceRow.data.length && value === sourceRow.data[index]
+        ? sourceRow.fields![index]
+        : serializeCsvField(value, delimiter)
+    )
     .join(delimiter);
 }
 

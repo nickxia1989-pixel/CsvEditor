@@ -148,6 +148,21 @@ describe("csv helpers", () => {
     )).toBe('34,测试lilifute ,"new,value"\r\n');
   });
 
+  it("preserves raw source fields when a row is widened", () => {
+    const original = '34,"keep,comma",测试lilifute \r\n';
+    const parsed = parseCsvText(original);
+    const next = parsed.data.map((row) => [...row, "added"]);
+
+    expect(unparseCsvData(
+      next,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe('34,"keep,comma",测试lilifute ,added\r\n');
+  });
+
   it("strips BOM while parsing and restores it when serializing", () => {
     const parsed = parseCsvText("\uFEFFA,B\n1,2");
     expect(parsed.hasBom).toBe(true);
