@@ -5,6 +5,7 @@ const MAX_HISTORY_ITEMS = 50;
 export function snapshotTab(tab: CsvTab): CsvTabHistorySnapshot {
   return {
     data: tab.data.map((row) => [...row]),
+    sourceRows: cloneSourceRows(tab.sourceRows),
     lockedCells: [...tab.lockedCells],
     selection: { ...tab.selection },
     colWidths: { ...tab.colWidths },
@@ -64,10 +65,15 @@ function restoreSnapshot(tab: CsvTab, snapshot: CsvTabHistorySnapshot, status: s
   return {
     ...tab,
     data: snapshot.data.map((row) => [...row]),
+    sourceRows: cloneSourceRows(snapshot.sourceRows),
     lockedCells: [...snapshot.lockedCells],
     selection: { ...snapshot.selection },
     colWidths: { ...snapshot.colWidths },
     dirty: snapshot.dirty,
     status
   };
+}
+
+function cloneSourceRows(sourceRows: CsvTab["sourceRows"]): CsvTab["sourceRows"] {
+  return sourceRows.map((row) => (row ? { raw: row.raw, data: [...row.data] } : undefined));
 }

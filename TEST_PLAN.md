@@ -136,6 +136,16 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; after selecting `B2`, focus moved to the hidden `Grid keyboard input`, ArrowRight moved to `C2` without scrolling, typing `K` opened the editor, Enter committed and moved to `C3`, and typing `N` immediately opened editing on `C3`.
 
+## Verification Run - 2026-06-05 Review Fixes
+
+- Review finding: CSV raw-row preservation metadata was still indexed only by row number, so insert/delete row operations could desynchronize `sourceRows` and cause untouched rows to be reserialized on save. Fixed by moving/removing source-row metadata with row operations and snapshotting it in undo/redo history.
+- Review finding: the hidden keyboard input proxy changed the event target for copy/paste shortcuts, so Ctrl+C/Ctrl+V needed direct proxy-target coverage. Added component regressions for copying and tiled paste while focus is on `Grid keyboard input`.
+- `npm test`: 8 files / 72 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 console errors; sample `monster.csv` loaded; ArrowRight moved selection through the keyboard proxy, typing `K` opened editing, Enter committed and returned focus to `Grid keyboard input`; sidebar drag changed width from `310px` to `430px`, grid resized from `931px` to `811px` wide without document-level horizontal overflow. Native clipboard shortcut injection remains disabled in this browser automation environment, so proxy Ctrl+C/Ctrl+V is covered by component tests.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

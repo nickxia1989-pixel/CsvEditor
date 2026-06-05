@@ -146,6 +146,7 @@ describe("GridEditor toolbar", () => {
   it("fires undo and redo toolbar callbacks", () => {
     const snapshot = {
       data: [["old"]],
+      sourceRows: [],
       lockedCells: [],
       selection: singleCellSelection(0, 0),
       colWidths: {},
@@ -204,6 +205,40 @@ describe("GridEditor toolbar", () => {
     }));
 
     fireEvent.paste(screen.getByRole("grid", { name: "CSV grid" }), {
+      clipboardData: {
+        getData: () => "X"
+      }
+    });
+
+    expect(props.onPaste).toHaveBeenCalledWith(1, 0, [
+      ["X", "X"],
+      ["X", "X"]
+    ]);
+  });
+
+  it("copies and pastes through the keyboard proxy when it owns focus", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid(createTab({
+      selection: {
+        anchorRow: 2,
+        anchorCol: 1,
+        focusRow: 1,
+        focusCol: 0
+      }
+    }));
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "c", ctrlKey: true });
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("1001\tTraining Slime\n1002\tForest Wolf"));
+    expect(screen.getByRole("gridcell", { name: "A2" })).toHaveClass("copied");
+    expect(screen.getByRole("gridcell", { name: "B3" })).toHaveClass("copied");
+
+    fireEvent.paste(keyProxy, {
       clipboardData: {
         getData: () => "X"
       }

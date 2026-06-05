@@ -62,7 +62,7 @@ export function unparseCsvData(
   delimiter: string,
   newline: string,
   hasBom = false,
-  sourceRows: CsvSourceRow[] = [],
+  sourceRows: Array<CsvSourceRow | undefined> = [],
   trailingNewline = false
 ): string {
   const separator = newline || "\n";

@@ -19,7 +19,7 @@ function makeTab(): CsvTab {
     delimiter: ",",
     newline: "\n",
     hasBom: false,
-    sourceRows: [],
+    sourceRows: [{ raw: '"A"', data: ["A"] }],
     trailingNewline: false,
     encoding: "utf-8",
     version: { lastModified: 1, size: 1 },
@@ -45,16 +45,19 @@ describe("history", () => {
     const edited = {
       ...pushUndo(original),
       data: [["B"]],
+      sourceRows: [undefined],
       dirty: true
     };
 
     const undone = undoTab(edited);
     expect(undone.data).toEqual([["A"]]);
+    expect(undone.sourceRows).toEqual([{ raw: '"A"', data: ["A"] }]);
     expect(undone.dirty).toBe(false);
     expect(undone.redoStack).toHaveLength(1);
 
     const redone = redoTab(undone);
     expect(redone.data).toEqual([["B"]]);
+    expect(redone.sourceRows).toEqual([undefined]);
     expect(redone.dirty).toBe(true);
     expect(redone.undoStack).toHaveLength(1);
   });
@@ -65,5 +68,13 @@ describe("history", () => {
     withHistory.data[0][0] = "mutated";
 
     expect(undoTab(withHistory).data).toEqual([["A"]]);
+  });
+
+  it("keeps source row snapshots immutable", () => {
+    const original = makeTab();
+    const withHistory = pushUndo(original);
+    withHistory.sourceRows[0]!.data[0] = "mutated";
+
+    expect(undoTab(withHistory).sourceRows).toEqual([{ raw: '"A"', data: ["A"] }]);
   });
 });

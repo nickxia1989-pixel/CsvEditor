@@ -239,6 +239,29 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe('34,测试lilifute ,测试\r\n""\r\n350,伊莉亚,测试\r\n');
   });
 
+  it("keeps source row formatting aligned after inserting a row", async () => {
+    const original = '34,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n';
+    const file = new MockFileHandle("insert-format.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["insert-format.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "insert-format.csv" }));
+    await waitFor(() => expect(screen.getByRole("rowheader", { name: "Row 2" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("rowheader", { name: "Row 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "插行" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe('34,测试lilifute ,测试\r\n,,\r\n""\r\n35,伊莉亚,测试\r\n');
+  });
+
   it("does not open duplicate tabs for the same CSV path", async () => {
     const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
     const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");

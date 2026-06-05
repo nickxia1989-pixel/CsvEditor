@@ -19,7 +19,7 @@ export type CsvTab = {
   delimiter: string;
   newline: string;
   hasBom: boolean;
-  sourceRows: CsvSourceRow[];
+  sourceRows: Array<CsvSourceRow | undefined>;
   trailingNewline: boolean;
   encoding: string;
   version: CsvVersion;
@@ -42,6 +42,7 @@ export type CsvTab = {
 
 export type CsvTabHistorySnapshot = {
   data: CsvMatrix;
+  sourceRows: Array<CsvSourceRow | undefined>;
   lockedCells: string[];
   selection: CsvSelection;
   colWidths: Record<number, number>;

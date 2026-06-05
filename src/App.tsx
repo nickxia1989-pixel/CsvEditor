@@ -759,6 +759,7 @@ export function App() {
                 return {
                   ...base,
                   data: insertRows(base.data, startRow, count),
+                  sourceRows: insertSourceRows(base.sourceRows, startRow, count),
                   lockedCells: shiftLockedCellsForInsertedRows(base.lockedCells, startRow, count),
                   selection: singleCellSelection(startRow, base.selection.focusCol),
                   dirty: true,
@@ -781,6 +782,7 @@ export function App() {
                 return {
                   ...base,
                   data: nextData,
+                  sourceRows: deleteSourceRows(base.sourceRows, startRow, clampedEndRow),
                   lockedCells: shiftLockedCellsForDeletedRows(base.lockedCells, startRow, clampedEndRow),
                   selection: singleCellSelection(nextRow, base.selection.focusCol),
                   dirty: true,
@@ -831,6 +833,7 @@ export function App() {
                 return {
                   ...base,
                   data: [...base.data, Array.from({ length: Math.max(1, maxColumnCount(base.data)) }, () => "")],
+                  sourceRows: [...base.sourceRows, undefined],
                   dirty: true,
                   status: "已新增行"
                 };
@@ -893,6 +896,27 @@ function clampSelectionToData(selection: CsvTab["selection"], data: CsvTab["data
     focusRow: clamp(selection.focusRow, 0, maxRow),
     focusCol: clamp(selection.focusCol, 0, maxCol)
   };
+}
+
+function insertSourceRows(sourceRows: CsvTab["sourceRows"], atRow: number, count: number): CsvTab["sourceRows"] {
+  const rowCount = Math.max(1, count);
+  const target = clamp(atRow, 0, sourceRows.length);
+  const inserted: CsvTab["sourceRows"] = Array.from({ length: rowCount }, () => undefined);
+  return [...sourceRows.slice(0, target), ...inserted, ...sourceRows.slice(target)];
+}
+
+function deleteSourceRows(sourceRows: CsvTab["sourceRows"], startRow: number, endRow: number): CsvTab["sourceRows"] {
+  if (sourceRows.length === 0) {
+    return [];
+  }
+  const normalizedStart = Math.min(startRow, endRow);
+  const normalizedEnd = Math.max(startRow, endRow);
+  if (normalizedEnd < 0 || normalizedStart >= sourceRows.length) {
+    return [...sourceRows];
+  }
+  const start = clamp(normalizedStart, 0, sourceRows.length - 1);
+  const end = clamp(normalizedEnd, 0, sourceRows.length - 1);
+  return [...sourceRows.slice(0, start), ...sourceRows.slice(end + 1)];
 }
 
 function clamp(value: number, min: number, max: number): number {
