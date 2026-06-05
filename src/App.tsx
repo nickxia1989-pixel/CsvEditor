@@ -786,6 +786,7 @@ export function App() {
             canRedo={activeTab.redoStack.length > 0}
             onUndo={() => updateActiveTab(undoTab)}
             onRedo={() => updateActiveTab(redoTab)}
+            onSaveRequest={() => activeTabId && void saveTab(activeTabId)}
             onInsertRows={(startRow, endRow) =>
               updateActiveTab((tab) => {
                 const base = pushUndo(tab);

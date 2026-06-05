@@ -290,6 +290,29 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe('340,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n');
   });
 
+  it("saves the current inline editor value when pressing Ctrl+S", async () => {
+    const file = new MockFileHandle("inline-save.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["inline-save.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "inline-save.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("Edited ID,Name\n1,Alpha");
+  });
+
   it("preserves raw field formatting when editing a virtual new column", async () => {
     const original = '34,"keep,comma",测试lilifute \r\n35,伊莉亚,测试\r\n';
     const file = new MockFileHandle("virtual-column-format.csv", original);

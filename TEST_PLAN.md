@@ -280,6 +280,17 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5174/` because 5173 was already occupied: sample `monster.csv` opened; double-clicking `A1`, changing it to `Header Edited`, and directly clicking `C3` committed `A1`, removed the inline editor, moved the selected label to `C3`, marked `未保存 1`, kept `冻结 2 行 / 2 列`, measured the grid at `948 x 529`, and produced 0 console errors. The temporary dev service was stopped after verification.
 
+## Verification Run - 2026-06-05 Ctrl+S From Inline Editor
+
+- Save workflow hardening: pressing `Ctrl+S` / `Meta+S` while an inline cell editor is active now commits the current editor value before requesting save. This prevents stale saves where the visible draft value has not reached the tab data yet.
+- `npm test -- src/components/GridEditor.test.tsx`: 1 file / 39 tests passed after adding a regression for inline-editor `Ctrl+S` committing before save request.
+- `npm test -- src/App.test.tsx`: 1 file / 31 tests passed after adding a writable-file regression proving `Ctrl+S` saves the edited inline value.
+- `npm test`: 8 files / 106 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5174/` because 5173 was already occupied: sample `monster.csv` opened; double-clicking `A1`, changing it to `Header Ctrl Save`, and pressing `Ctrl+S` in the inline editor committed A1, removed the editor, marked `未保存 1`, kept `冻结 2 行 / 2 列`, measured the grid at `948 x 529`, and produced 0 console errors. The sample source is read-only, so actual write correctness is covered by the App integration test. The temporary dev service was stopped after verification.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

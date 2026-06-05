@@ -69,6 +69,7 @@ function createGridProps(tab = createTab()) {
     canRedo: tab.redoStack.length > 0,
     onUndo: vi.fn(),
     onRedo: vi.fn(),
+    onSaveRequest: vi.fn(),
     onInsertRows: vi.fn(),
     onDeleteRows: vi.fn(),
     onInsertColumns: vi.fn(),
@@ -479,6 +480,20 @@ describe("GridEditor toolbar", () => {
     expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "x");
     expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(1, 0));
     await waitFor(() => expect(document.activeElement).toBe(keyProxy));
+  });
+
+  it("commits the inline edit before requesting Ctrl+S save", async () => {
+    const { container, props } = renderGridWithResult();
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
+
+    expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "Edited ID");
+    await waitFor(() => expect(props.onSaveRequest).toHaveBeenCalledTimes(1));
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
   });
 
   it("uses the keyboard proxy for focus while keeping arrow keys on grid navigation", async () => {

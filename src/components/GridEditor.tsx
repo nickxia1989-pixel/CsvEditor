@@ -51,6 +51,7 @@ type GridEditorProps = {
   canRedo: boolean;
   onUndo(): void;
   onRedo(): void;
+  onSaveRequest(): void;
   onInsertRows(startRow: number, endRow: number): void;
   onDeleteRows(startRow: number, endRow: number): void;
   onInsertColumns(startCol: number, endCol: number): void;
@@ -92,6 +93,7 @@ export function GridEditor({
   canRedo,
   onUndo,
   onRedo,
+  onSaveRequest,
   onInsertRows,
   onDeleteRows,
   onInsertColumns,
@@ -329,6 +331,11 @@ export function GridEditor({
   const runAfterClearingCopiedRange = (action: () => void) => {
     setCopiedRange(null);
     action();
+  };
+
+  const commitEditingAndRequestSave = () => {
+    commitEditing(true);
+    window.setTimeout(onSaveRequest, 0);
   };
 
   const beginEdit = (row = tab.selection.focusRow, col = tab.selection.focusCol, seed?: string) => {
@@ -782,7 +789,11 @@ export function GridEditor({
             onChange={(event) => setEditing({ row, col, value: event.target.value })}
             onBlur={() => commitEditing(false)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
+              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+                event.preventDefault();
+                event.stopPropagation();
+                commitEditingAndRequestSave();
+              } else if (event.key === "Enter") {
                 event.preventDefault();
                 commitEditing(true);
                 moveSelection(1, 0, false);
