@@ -352,6 +352,43 @@ describe("GridEditor toolbar", () => {
     });
   });
 
+  it("does not scroll back to the first cell when selecting row or column headers", async () => {
+    const { props, rerender } = renderGridWithResult();
+    const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLElement;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 96 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 180 });
+
+    grid.scrollTop = 240;
+    fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }));
+    const columnSelection = props.onSelectionChange.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ selection: columnSelection })} />);
+
+    await waitFor(() => expect(grid.scrollTop).toBe(240));
+
+    grid.scrollLeft = 260;
+    fireEvent.pointerDown(screen.getByRole("rowheader", { name: "Row 2" }));
+    const rowSelection = props.onSelectionChange.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ selection: rowSelection })} />);
+
+    await waitFor(() => expect(grid.scrollLeft).toBe(260));
+  });
+
+  it("still scrolls focused cells into view for normal selection changes", async () => {
+    const { props, rerender } = renderGridWithResult(createTab({ selection: singleCellSelection(10, 10) }));
+    const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLElement;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 96 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 180 });
+    grid.scrollTop = 240;
+    grid.scrollLeft = 260;
+
+    rerender(<GridEditor {...props} tab={createTab({ selection: singleCellSelection(0, 0) })} />);
+
+    await waitFor(() => {
+      expect(grid.scrollTop).toBe(0);
+      expect(grid.scrollLeft).toBe(0);
+    });
+  });
+
   it("renders frozen rows and columns in sticky layers without scroll transforms", () => {
     renderGrid(createTab({ freezeRows: 1, freezeCols: 1 }));
 

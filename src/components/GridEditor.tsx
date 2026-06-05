@@ -104,6 +104,7 @@ export function GridEditor({
   const viewportFrameRef = useRef<number | null>(null);
   const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
   const composingInputRef = useRef(false);
+  const suppressNextSelectionScrollRef = useRef(false);
   const [viewport, setViewport] = useState<ViewportState>({
     width: 800,
     height: 500,
@@ -224,6 +225,10 @@ export function GridEditor({
   useEffect(() => {
     const viewportElement = viewportRef.current;
     if (!viewportElement) {
+      return;
+    }
+    if (suppressNextSelectionScrollRef.current) {
+      suppressNextSelectionScrollRef.current = false;
       return;
     }
     const selectedLeft = rowHeaderWidth + colOffsets[tab.selection.focusCol];
@@ -568,6 +573,7 @@ export function GridEditor({
       }}
       onPointerDown={(event) => {
         event.preventDefault();
+        suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: realEndRow, anchorCol: col, focusRow: 0, focusCol: col });
         focusGridInputSoon();
       }}
@@ -602,6 +608,7 @@ export function GridEditor({
       }}
       onPointerDown={(event) => {
         event.preventDefault();
+        suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
         focusGridInputSoon();
       }}
@@ -891,6 +898,7 @@ export function GridEditor({
             }}
             onPointerDown={(event) => {
               event.preventDefault();
+              suppressNextSelectionScrollRef.current = true;
               onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
               focusGridInputSoon();
             }}

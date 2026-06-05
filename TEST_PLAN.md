@@ -156,6 +156,15 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; proxy-focused ArrowRight moved selection, pressing `K` opened an editor with `K`, Enter committed and returned focus to `Grid keyboard input`; grid viewport stayed `931 x 512`; console error log was empty.
 
+## Verification Run - 2026-06-05 Header Selection View Stability
+
+- Selection hardening: row/column/corner header selection now suppresses only that selection-change auto-scroll, so choosing a whole row or column does not pull the viewport back to the first selected cell. Normal cell navigation and selection changes still scroll focused cells into view.
+- `npm test`: 8 files / 78 tests passed after adding regressions for header selection preserving viewport scroll and normal selection still scrolling to the focused cell.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: using coordinate clicks to avoid test-tool auto-scroll, sample `monster.csv` stayed at `scrollTop=360 / scrollLeft=280` after selecting visible column `D` and visible row `18`; selected labels became `D1` and `A18`; console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
