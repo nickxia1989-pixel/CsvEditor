@@ -434,6 +434,65 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
   });
 
+  it("uses Home, End, PageUp, and PageDown for grid navigation", () => {
+    const data = Array.from({ length: 30 }, (_, row) => [`A${row}`, `B${row}`, `C${row}`, `D${row}`]);
+    const props = renderGrid(createTab({
+      data,
+      selection: singleCellSelection(5, 2)
+    }));
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "Home" });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(5, 0));
+
+    fireEvent.keyDown(keyProxy, { key: "End" });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(5, 3));
+
+    fireEvent.keyDown(keyProxy, { key: "PageUp" });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 2));
+
+    fireEvent.keyDown(keyProxy, { key: "PageDown" });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(21, 2));
+  });
+
+  it("jumps to used range edges with Ctrl or Meta arrow shortcuts", () => {
+    const data = Array.from({ length: 6 }, (_, row) => [`A${row}`, `B${row}`, `C${row}`, `D${row}`]);
+    const props = renderGrid(createTab({
+      data,
+      selection: singleCellSelection(2, 1)
+    }));
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "ArrowDown", ctrlKey: true });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(5, 1));
+
+    fireEvent.keyDown(keyProxy, { key: "ArrowRight", ctrlKey: true });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(2, 3));
+
+    fireEvent.keyDown(keyProxy, { key: "ArrowUp", metaKey: true });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
+
+    fireEvent.keyDown(keyProxy, { key: "ArrowLeft", metaKey: true });
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(2, 0));
+  });
+
+  it("extends the selected range with Shift plus navigation keys", () => {
+    const props = renderGrid(createTab({
+      data: [["A", "B", "C", "D"]],
+      selection: singleCellSelection(0, 2)
+    }));
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "Home", shiftKey: true });
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 0,
+      anchorCol: 2,
+      focusRow: 0,
+      focusCol: 0
+    });
+  });
+
   it("lets the keyboard proxy input event seed text editing instead of printable keydown", () => {
     const { container } = renderGridWithResult();
     const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;

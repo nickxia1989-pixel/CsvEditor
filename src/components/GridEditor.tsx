@@ -406,15 +406,33 @@ export function GridEditor({
     updateDragSelection(row, col);
   };
 
-  const moveSelection = (rowDelta: number, colDelta: number, extend: boolean) => {
-    const nextRow = clamp(tab.selection.focusRow + rowDelta, 0, rowCount - 1);
-    const nextCol = clamp(tab.selection.focusCol + colDelta, 0, maxCols - 1);
+  const setSelectionFocus = (row: number, col: number, extend: boolean) => {
+    const nextRow = clamp(row, 0, rowCount - 1);
+    const nextCol = clamp(col, 0, maxCols - 1);
     onSelectionChange(
       extend
         ? { ...tab.selection, focusRow: nextRow, focusCol: nextCol }
         : singleCellSelection(nextRow, nextCol)
     );
   };
+
+  const moveSelection = (rowDelta: number, colDelta: number, extend: boolean) => {
+    setSelectionFocus(tab.selection.focusRow + rowDelta, tab.selection.focusCol + colDelta, extend);
+  };
+
+  const moveSelectionToUsedEdge = (direction: "up" | "down" | "left" | "right", extend: boolean) => {
+    if (direction === "up") {
+      setSelectionFocus(0, tab.selection.focusCol, extend);
+    } else if (direction === "down") {
+      setSelectionFocus(realEndRow, tab.selection.focusCol, extend);
+    } else if (direction === "left") {
+      setSelectionFocus(tab.selection.focusRow, 0, extend);
+    } else {
+      setSelectionFocus(tab.selection.focusRow, realEndCol, extend);
+    }
+  };
+
+  const pageRowDelta = Math.max(1, Math.floor(Math.max(rowHeight, (viewport.height || 500) - headerHeight) / rowHeight));
 
   const runFind = (direction: "next" | "previous") => {
     const result = findCell(tab.data, tab.findQuery, tab.selection.focusRow, tab.selection.focusCol, direction);
@@ -522,24 +540,64 @@ export function GridEditor({
       onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
       return;
     }
+    if (event.key === "Home") {
+      event.preventDefault();
+      setSelectionFocus(event.ctrlKey || event.metaKey ? 0 : tab.selection.focusRow, 0, event.shiftKey);
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      setSelectionFocus(
+        event.ctrlKey || event.metaKey ? realEndRow : tab.selection.focusRow,
+        realEndCol,
+        event.shiftKey
+      );
+      return;
+    }
+    if (event.key === "PageUp") {
+      event.preventDefault();
+      moveSelection(-pageRowDelta, 0, event.shiftKey);
+      return;
+    }
+    if (event.key === "PageDown") {
+      event.preventDefault();
+      moveSelection(pageRowDelta, 0, event.shiftKey);
+      return;
+    }
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      moveSelection(-1, 0, event.shiftKey);
+      if (event.ctrlKey || event.metaKey) {
+        moveSelectionToUsedEdge("up", event.shiftKey);
+      } else {
+        moveSelection(-1, 0, event.shiftKey);
+      }
       return;
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      moveSelection(1, 0, event.shiftKey);
+      if (event.ctrlKey || event.metaKey) {
+        moveSelectionToUsedEdge("down", event.shiftKey);
+      } else {
+        moveSelection(1, 0, event.shiftKey);
+      }
       return;
     }
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      moveSelection(0, -1, event.shiftKey);
+      if (event.ctrlKey || event.metaKey) {
+        moveSelectionToUsedEdge("left", event.shiftKey);
+      } else {
+        moveSelection(0, -1, event.shiftKey);
+      }
       return;
     }
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      moveSelection(0, 1, event.shiftKey);
+      if (event.ctrlKey || event.metaKey) {
+        moveSelectionToUsedEdge("right", event.shiftKey);
+      } else {
+        moveSelection(0, 1, event.shiftKey);
+      }
       return;
     }
     if (event.key === "Tab") {

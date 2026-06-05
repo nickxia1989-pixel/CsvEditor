@@ -250,6 +250,16 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` opened, default `冻结 2 行 / 2 列` remained visible, grid viewport stayed inside the workspace, and console error log was empty.
 
+## Verification Run - 2026-06-05 Extended Keyboard Navigation
+
+- Keyboard hardening: `Home`, `End`, `PageUp`, `PageDown`, and `Ctrl/Meta + Arrow` now move or extend the grid selection directly instead of letting the browser scroll the grid viewport.
+- `npm test -- src/components/GridEditor.test.tsx`: 1 file / 33 tests passed after adding navigation regressions for Home/End/Page keys, Ctrl/Meta edge jumps, and Shift range extension.
+- `npm test`: 8 files / 99 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` opened; selecting `B2`, pressing `End` moved the active cell to `G2`, pressing `Ctrl+ArrowDown` moved to `G4`, grid scroll stayed at `0 / 0`, and console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
