@@ -67,6 +67,36 @@ describe("csv helpers", () => {
     expect(text).toBe("A;B\n1;2");
   });
 
+  it("preserves untouched source rows exactly when saving", () => {
+    const original = '34,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n';
+    const parsed = parseCsvText(original);
+
+    expect(unparseCsvData(
+      parsed.data,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe(original);
+  });
+
+  it("only reserializes changed rows and keeps untouched CSV formatting", () => {
+    const original = '34,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n';
+    const parsed = parseCsvText(original);
+    const next = parsed.data.map((row) => [...row]);
+    next[2][1] = "伊莉亚改";
+
+    expect(unparseCsvData(
+      next,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe('34,测试lilifute ,测试\r\n""\r\n35,伊莉亚改,测试\r\n');
+  });
+
   it("strips BOM while parsing and restores it when serializing", () => {
     const parsed = parseCsvText("\uFEFFA,B\n1,2");
     expect(parsed.hasBom).toBe(true);

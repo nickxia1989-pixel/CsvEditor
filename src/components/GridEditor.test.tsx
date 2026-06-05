@@ -27,6 +27,8 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
     delimiter: ",",
     newline: "\n",
     hasBom: false,
+    sourceRows: [],
+    trailingNewline: false,
     encoding: "utf-8",
     version: { lastModified: 1, size: 1 },
     dirty: false,
@@ -105,6 +107,7 @@ describe("GridEditor editing workflow", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("ID"));
     expect(props.onSetStatus).toHaveBeenCalledWith("已复制 1 x 1");
+    expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied");
   });
 
   it("reports a copy failure when the browser clipboard API is unavailable", async () => {
@@ -190,23 +193,71 @@ describe("GridEditor toolbar", () => {
     });
   });
 
+  it("starts paste from the selection top-left and tiles into a larger selected range", () => {
+    const props = renderGrid(createTab({
+      selection: {
+        anchorRow: 2,
+        anchorCol: 1,
+        focusRow: 1,
+        focusCol: 0
+      }
+    }));
+
+    fireEvent.paste(screen.getByRole("grid", { name: "CSV grid" }), {
+      clipboardData: {
+        getData: () => "X"
+      }
+    });
+
+    expect(props.onPaste).toHaveBeenCalledWith(1, 0, [
+      ["X", "X"],
+      ["X", "X"]
+    ]);
+  });
+
+  it("opens an editor from keyboard input and returns focus to the grid after Enter", async () => {
+    const { container, props } = renderGridWithResult();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+
+    fireEvent.keyDown(grid, { key: "x" });
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("x");
+
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "x");
+    expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(1, 0));
+    await waitFor(() => expect(document.activeElement).toBe(grid));
+  });
+
+  it("lets the inline editor handle pointer selection without changing the grid selection", () => {
+    const { container, props } = renderGridWithResult();
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.pointerDown(editor, { clientX: 82, clientY: 70 });
+
+    expect(props.onSelectionChange).not.toHaveBeenCalled();
+  });
+
   it("selects whole columns and rows from the headers", () => {
     const props = renderGrid();
 
     fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }));
     expect(props.onSelectionChange).toHaveBeenLastCalledWith({
-      anchorRow: 0,
+      anchorRow: 2,
       anchorCol: 1,
-      focusRow: 2,
+      focusRow: 0,
       focusCol: 1
     });
 
     fireEvent.pointerDown(screen.getByRole("rowheader", { name: "Row 2" }));
     expect(props.onSelectionChange).toHaveBeenLastCalledWith({
       anchorRow: 1,
-      anchorCol: 0,
+      anchorCol: 1,
       focusRow: 1,
-      focusCol: 1
+      focusCol: 0
     });
   });
 
@@ -216,10 +267,10 @@ describe("GridEditor toolbar", () => {
     fireEvent.pointerDown(screen.getByRole("button", { name: "Select all cells" }));
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith({
-      anchorRow: 0,
-      anchorCol: 0,
-      focusRow: 2,
-      focusCol: 1
+      anchorRow: 2,
+      anchorCol: 1,
+      focusRow: 0,
+      focusCol: 0
     });
   });
 

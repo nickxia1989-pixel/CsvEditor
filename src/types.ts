@@ -1,3 +1,4 @@
+import type { CsvSourceRow } from "./lib/csv";
 import type { CsvFileRef, CsvVersion } from "./lib/fileRefs";
 
 export type CsvMatrix = string[][];
@@ -18,6 +19,8 @@ export type CsvTab = {
   delimiter: string;
   newline: string;
   hasBom: boolean;
+  sourceRows: CsvSourceRow[];
+  trailingNewline: boolean;
   encoding: string;
   version: CsvVersion;
   latestDiskVersion?: CsvVersion;

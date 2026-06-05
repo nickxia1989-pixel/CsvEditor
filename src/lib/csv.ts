@@ -6,6 +6,13 @@ export type ParsedCsv = {
   delimiter: string;
   newline: string;
   hasBom: boolean;
+  sourceRows: CsvSourceRow[];
+  trailingNewline: boolean;
+};
+
+export type CsvSourceRow = {
+  raw: string;
+  data: string[];
 };
 
 export function detectNewline(text: string): string {
@@ -36,20 +43,43 @@ export function parseCsvText(text: string): ParsedCsv {
     }
   }
 
+  const rawRows = splitCsvRecords(normalizedText);
   return {
     data,
     delimiter: parsed.meta.delimiter || ",",
     newline: detectNewline(normalizedText),
-    hasBom
+    hasBom,
+    sourceRows: data.map((row, index) => ({
+      raw: rawRows[index] ?? unparseCsvData([row], parsed.meta.delimiter || ",", "\n", false),
+      data: [...row]
+    })),
+    trailingNewline: normalizedText.length > 0 && /(\r\n|\n|\r)$/.test(normalizedText)
   };
 }
 
-export function unparseCsvData(data: CsvMatrix, delimiter: string, newline: string, hasBom = false): string {
-  const text = Papa.unparse(data, {
-    delimiter: delimiter || ",",
-    newline: newline || "\n"
-  });
-  return hasBom ? `\uFEFF${text}` : text;
+export function unparseCsvData(
+  data: CsvMatrix,
+  delimiter: string,
+  newline: string,
+  hasBom = false,
+  sourceRows: CsvSourceRow[] = [],
+  trailingNewline = false
+): string {
+  const separator = newline || "\n";
+  const text = data
+    .map((row, index) => {
+      const sourceRow = sourceRows[index];
+      if (sourceRow && rowsEqual(row, sourceRow.data)) {
+        return sourceRow.raw;
+      }
+      return Papa.unparse([row], {
+        delimiter: delimiter || ",",
+        newline: separator
+      });
+    })
+    .join(separator);
+  const withFinalNewline = trailingNewline && text.length > 0 ? `${text}${separator}` : text;
+  return hasBom ? `\uFEFF${withFinalNewline}` : withFinalNewline;
 }
 
 export function readCell(data: CsvMatrix, row: number, col: number): string {
@@ -158,6 +188,49 @@ export function findCell(
   }
 
   return null;
+}
+
+function splitCsvRecords(text: string): string[] {
+  if (text.length === 0) {
+    return [];
+  }
+
+  const rows: string[] = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"') {
+      if (inQuotes && text[index + 1] === '"') {
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (inQuotes) {
+      continue;
+    }
+    if (char === "\r" || char === "\n") {
+      rows.push(text.slice(start, index));
+      if (char === "\r" && text[index + 1] === "\n") {
+        index += 1;
+      }
+      start = index + 1;
+    }
+  }
+
+  if (start < text.length) {
+    rows.push(text.slice(start));
+  }
+  return rows;
+}
+
+function rowsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
 }
 
 export function replaceCellText(data: CsvMatrix, row: number, col: number, query: string, replacement: string): CsvMatrix {

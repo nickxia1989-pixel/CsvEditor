@@ -20,6 +20,7 @@ import { GridEditor } from "./components/GridEditor";
 import { TabStrip } from "./components/TabStrip";
 import {
   maxColumnCount,
+  parseCsvText,
   replaceAllCellText,
   replaceCellText,
   readCell,
@@ -268,13 +269,23 @@ export function App() {
             return "blocked";
           }
         }
-        const text = unparseCsvData(tab.data, tab.delimiter, tab.newline, tab.hasBom);
+        const text = unparseCsvData(
+          tab.data,
+          tab.delimiter,
+          tab.newline,
+          tab.hasBom,
+          tab.sourceRows,
+          tab.trailingNewline
+        );
         const version = await tab.fileRef.write(text);
+        const saved = parseCsvText(text);
         patchTab(id, (current) =>
           clearHistory({
             ...current,
             version,
             encoding: "utf-8",
+            sourceRows: saved.sourceRows,
+            trailingNewline: saved.trailingNewline,
             latestDiskVersion: undefined,
             dirty: false,
             externalChanged: false,

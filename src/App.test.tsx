@@ -216,6 +216,29 @@ describe("App local directory flow", () => {
     expect(second.getText()).toContain("ID_B,Name");
   });
 
+  it("preserves untouched CSV row formatting when saving an edit", async () => {
+    const original = '34,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n';
+    const file = new MockFileHandle("format.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["format.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "format.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A3" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A3" }), { clientX: 80, clientY: 130 });
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "350" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe('34,测试lilifute ,测试\r\n""\r\n350,伊莉亚,测试\r\n');
+  });
+
   it("does not open duplicate tabs for the same CSV path", async () => {
     const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
     const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");

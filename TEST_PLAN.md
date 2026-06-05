@@ -20,6 +20,7 @@
 | 表格显示 | 大 CSV 虚拟滚动 | Browser + sample stress data | 横纵滚动顺畅，表头/行号对齐 |
 | 表格编辑 | 单元格、公式栏编辑 | Grid/App tests + Browser smoke | 修改写入选中格，状态变未保存 |
 | 表格编辑 | 复制/粘贴 TSV | Grid test | 多格粘贴正确，锁定格跳过 |
+| 表格编辑 | Excel 风格键盘和粘贴体验 | Grid/App tests + Browser smoke | 行列选择不跳末格，粘贴从选区左上角开始，单格可铺满目标区域，编辑回车后可直接继续输入 |
 | 表格编辑 | Delete/Backspace 清空选区 | Grid test | 只清空未锁定格 |
 | 表格编辑 | 键盘导航 | Grid test | 方向键、Tab、Enter/F2 行为稳定 |
 | 锁定 | 锁定/解锁选区 | Grid/App tests | 锁定格不可编辑，删除行列受保护 |
@@ -30,6 +31,7 @@
 | 热刷新 | 干净页签自动刷新 | Tab model/App test | 每 5 秒检查外部变化并自动重读，不长期占用文件，顶部状态栏不显示热刷新轮询状态 |
 | 热刷新 | 脏页签冲突提示 | Tab model/App test | 有未保存内容时只标记冲突，不覆盖本地编辑 |
 | 保存 | 保存当前/全部保存 | App integration test | 写入前检查磁盘版本，未保存计数归零 |
+| 保存 | 保留未改行 CSV 原始格式 | CSV/App tests | 未改行不因保存而改写引号、尾空格字段、`""` 空行或 EOF 换行 |
 | 编码 | UTF-8/GB18030/BOM | Unit test + table scan | 自动识别常见中文表，保存保留 BOM |
 | 真实表扫描 | Tables 只读解析 | `npm run check:tables` | 所有 CSV 可解析，统计最大行列和编码 |
 | 构建质量 | 单元测试和生产构建 | `npm test`, `npm run build` | 全部通过，无 TypeScript/构建错误 |
@@ -117,7 +119,17 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; clicking the divider did not leave resize mode active, dragging to `520px` and `240px` released cleanly, no sidebar/workspace overlap occurred, and grid scroll still worked. Screenshot: `artifacts/csv-editor-resize-review.png`.
 
+## Verification Run - 2026-06-05 Grid Basics And CSV Format
+
+- `svn diff D:\2D_AI_WORKING\Tables\npc.csv`: read-only investigation showed current working-copy format noise consistent with full-row reserialization: an untouched-looking trailing-space field became quoted, `""` empty-record rows became blank rows, and EOF newline state changed.
+- `npm test`: 8 files / 67 tests passed after adding coverage for row/column focus anchors, top-left paste starts, target-range paste tiling, copied-cell visual state, inline-editor pointer handling, keyboard edit start, Enter focus recovery, and untouched CSV row preservation.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: clean run produced 0 new console errors; ArrowRight moved selection from `B2` to `C2` without scrolling, column/row header selection focused `B1`/`A2` instead of the last cell, double-click editor stayed active while dragging inside the input, and after editing `B2` then pressing Enter, typing immediately opened editing on `B3`.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
 - 浏览器烟测已覆盖页面布局、工具栏换行、表格拖拽选区、缩放、列宽拖拽和滚动；大目录树滚动用组件级 synthetic large tree 自动化覆盖。
+- 当前浏览器自动化环境禁用了原生 Ctrl+C/Ctrl+V 注入；复制态和粘贴定位/铺展由组件级自动化覆盖，真实浏览器 smoke 覆盖了不依赖系统剪贴板的键盘编辑与选择行为。

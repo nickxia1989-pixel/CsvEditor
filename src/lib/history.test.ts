@@ -19,6 +19,8 @@ function makeTab(): CsvTab {
     delimiter: ",",
     newline: "\n",
     hasBom: false,
+    sourceRows: [],
+    trailingNewline: false,
     encoding: "utf-8",
     version: { lastModified: 1, size: 1 },
     dirty: false,

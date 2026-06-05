@@ -701,6 +701,11 @@ button:disabled {
   background: #dff0ee;
 }
 
+.grid-cell.copied {
+  outline: 2px dashed #2563eb;
+  outline-offset: -4px;
+}
+
 .grid-cell.focus {
   z-index: 3;
   box-shadow: inset 0 0 0 2px var(--accent);

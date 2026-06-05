@@ -115,6 +115,7 @@ export function GridEditor({
     startX: number;
     startWidth: number;
   } | null>(null);
+  const [copiedRange, setCopiedRange] = useState<ReturnType<typeof normalizeSelection> | null>(null);
 
   const selectionRange = normalizeSelection(tab.selection);
   const selectedValue = readCell(tab.data, tab.selection.focusRow, tab.selection.focusCol);
@@ -293,11 +294,16 @@ export function GridEditor({
   useEffect(() => {
     setEditing(null);
     setResizeState(null);
+    setCopiedRange(null);
     dragAnchorRef.current = null;
     setDragging(false);
   }, [tab.id]);
 
-  const commitEditing = () => {
+  const focusViewportSoon = () => {
+    window.requestAnimationFrame(() => viewportRef.current?.focus({ preventScroll: true }));
+  };
+
+  const commitEditing = (refocusGrid = false) => {
     if (!editing) {
       return;
     }
@@ -305,12 +311,16 @@ export function GridEditor({
       onSetCell(editing.row, editing.col, editing.value);
     }
     setEditing(null);
+    if (refocusGrid) {
+      focusViewportSoon();
+    }
   };
 
   const beginEdit = (row = tab.selection.focusRow, col = tab.selection.focusCol, seed?: string) => {
     if (lockedSet.has(cellKey(row, col))) {
       return;
     }
+    setCopiedRange(null);
     setEditing({
       row,
       col,
@@ -416,6 +426,7 @@ export function GridEditor({
           throw new Error("Clipboard API unavailable");
         }
         await navigator.clipboard.writeText(text);
+        setCopiedRange(selectionRange);
         onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
       } catch {
         onSetStatus("复制失败：浏览器未允许剪贴板写入");
@@ -427,6 +438,12 @@ export function GridEditor({
       return;
     }
 
+    if (event.key === "Escape" && copiedRange) {
+      event.preventDefault();
+      setCopiedRange(null);
+      onSetStatus("已取消复制选区");
+      return;
+    }
     if (event.key === "Enter" || event.key === "F2") {
       event.preventDefault();
       beginEdit();
@@ -462,10 +479,26 @@ export function GridEditor({
       moveSelection(0, event.shiftKey ? -1 : 1, false);
       return;
     }
+    if (event.nativeEvent.isComposing || event.key === "Process") {
+      return;
+    }
     if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       beginEdit(tab.selection.focusRow, tab.selection.focusCol, event.key);
     }
+  };
+
+  const handleGridBeforeInput = (event: React.FormEvent<HTMLDivElement>) => {
+    if (editing) {
+      return;
+    }
+    const nativeEvent = event.nativeEvent as InputEvent;
+    const text = nativeEvent.data;
+    if (!text || nativeEvent.inputType === "insertLineBreak") {
+      return;
+    }
+    event.preventDefault();
+    beginEdit(tab.selection.focusRow, tab.selection.focusCol, text);
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -477,7 +510,15 @@ export function GridEditor({
       return;
     }
     event.preventDefault();
-    onPaste(tab.selection.focusRow, tab.selection.focusCol, parseTsv(text));
+    onPaste(
+      selectionRange.startRow,
+      selectionRange.startCol,
+      expandPasteValues(
+        parseTsv(text),
+        selectionRange.endRow - selectionRange.startRow + 1,
+        selectionRange.endCol - selectionRange.startCol + 1
+      )
+    );
   };
 
   const renderColumnHeader = (col: number, keyPrefix: string, className = "") => (
@@ -494,7 +535,7 @@ export function GridEditor({
       }}
       onPointerDown={(event) => {
         event.preventDefault();
-        onSelectionChange({ anchorRow: 0, anchorCol: col, focusRow: realEndRow, focusCol: col });
+        onSelectionChange({ anchorRow: realEndRow, anchorCol: col, focusRow: 0, focusCol: col });
         viewportRef.current?.focus();
       }}
     >
@@ -528,7 +569,7 @@ export function GridEditor({
       }}
       onPointerDown={(event) => {
         event.preventDefault();
-        onSelectionChange({ anchorRow: row, anchorCol: 0, focusRow: row, focusCol: realEndCol });
+        onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
         viewportRef.current?.focus();
       }}
     >
@@ -546,11 +587,17 @@ export function GridEditor({
     const focus = row === tab.selection.focusRow && col === tab.selection.focusCol;
     const locked = lockedSet.has(key);
     const isEditing = editing?.row === row && editing.col === col;
+    const copied =
+      copiedRange &&
+      row >= copiedRange.startRow &&
+      row <= copiedRange.endRow &&
+      col >= copiedRange.startCol &&
+      col <= copiedRange.endCol;
 
     return (
       <div
         key={`${keyPrefix}-${row}-${col}`}
-        className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${
+        className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${copied ? "copied" : ""} ${
           locked ? "locked" : ""
         } ${className}`}
         role="gridcell"
@@ -563,6 +610,9 @@ export function GridEditor({
           lineHeight: `${rowHeight - 2}px`
         }}
         onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest(".cell-editor")) {
+            return;
+          }
           event.preventDefault();
           dragAnchorRef.current = { row, col };
           setDragging(true);
@@ -580,19 +630,21 @@ export function GridEditor({
             className="cell-editor"
             value={editing.value}
             autoFocus
+            onPointerDown={(event) => event.stopPropagation()}
             onChange={(event) => setEditing({ row, col, value: event.target.value })}
-            onBlur={commitEditing}
+            onBlur={() => commitEditing(false)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                commitEditing();
+                commitEditing(true);
                 moveSelection(1, 0, false);
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 setEditing(null);
+                focusViewportSoon();
               } else if (event.key === "Tab") {
                 event.preventDefault();
-                commitEditing();
+                commitEditing(true);
                 moveSelection(0, event.shiftKey ? -1 : 1, false);
               }
             }}
@@ -743,6 +795,7 @@ export function GridEditor({
         ref={viewportRef}
         tabIndex={0}
         onKeyDown={handleGridKeyDown}
+        onBeforeInput={handleGridBeforeInput}
         onPaste={handlePaste}
         onPointerMove={(event) => {
           if (dragging) {
@@ -789,7 +842,7 @@ export function GridEditor({
             }}
             onPointerDown={(event) => {
               event.preventDefault();
-              onSelectionChange({ anchorRow: 0, anchorCol: 0, focusRow: realEndRow, focusCol: realEndCol });
+              onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
               viewportRef.current?.focus();
             }}
           />
@@ -842,6 +895,25 @@ function findColumnAtOffset(offsets: number[], target: number): number {
     }
   }
   return Math.max(0, Math.min(offsets.length - 2, low));
+}
+
+function expandPasteValues(values: string[][], targetRows: number, targetCols: number): string[][] {
+  if (values.length === 0 || targetRows <= 0 || targetCols <= 0) {
+    return values;
+  }
+  const sourceRows = values.length;
+  const sourceCols = values.reduce((max, row) => Math.max(max, row.length), 0);
+  if (sourceCols === 0) {
+    return values;
+  }
+  const targetIsLarger = targetRows > sourceRows || targetCols > sourceCols;
+  const canTile = targetRows % sourceRows === 0 && targetCols % sourceCols === 0;
+  if (!targetIsLarger || !canTile) {
+    return values;
+  }
+  return Array.from({ length: targetRows }, (_, row) =>
+    Array.from({ length: targetCols }, (_, col) => values[row % sourceRows]?.[col % sourceCols] ?? "")
+  );
 }
 
 function columnName(index: number): string {
