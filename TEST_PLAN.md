@@ -13,7 +13,7 @@
 | 目录选择 | Chrome/Edge 选择本地目录 | Browser manual smoke | 左侧加载目录，读模式不锁文件 |
 | 目录树 | 大目录滚动 | Browser + synthetic large tree | 文件列表可滚轮滚动、拖 scrollbar、搜索后仍可滚动 |
 | 目录树 | 懒加载展开/折叠 | Component test + Browser smoke | 目录展开只加载该层，折叠不丢子节点 |
-| 目录树 | 筛选 | Component test + Browser smoke | 已加载节点按名称/路径筛选，父目录保留 |
+| 目录树 | 筛选 | Component/App test + Browser smoke | 搜索会递归加载未展开目录下的 CSV，命中项和父目录可见 |
 | 布局 | 左侧侧栏拖拽宽度 | App test + Browser smoke | 鼠标拖拽限制在 240-520px，右侧工作区和目录树不重叠、不溢出 |
 | 多标签 | 打开多个 CSV | App integration test | 已打开文件进入上方标签，重复打开只激活旧标签 |
 | 多标签 | 未保存提示和关闭保护 | App integration test | 脏标签有标记，关闭/刷新前提示 |
@@ -25,7 +25,7 @@
 | 表格编辑 | 键盘导航 | Grid test | 方向键、Tab、Enter/F2 行为稳定 |
 | 锁定 | 锁定/解锁选区 | Grid/App tests | 锁定格不可编辑，删除行列受保护 |
 | 缩放 | 放大/缩小格子 | Grid test + Browser smoke | 行高、列宽、表头同步缩放，布局不溢出 |
-| 冻结 | 默认冻结到 B3、冻结到指定格、取消冻结 | Browser smoke + Grid/App tests | 新 CSV 默认冻结 2 行 / 1 列，取消后刷新仍保持取消；冻结区域滚动时保持可见且不抖动、不遮挡 |
+| 冻结 | 默认冻结到 C3、冻结到指定格、取消冻结 | Browser smoke + Grid/App tests | 新 CSV 默认冻结 2 行 / 2 列，取消后刷新仍保持取消；冻结区域滚动时保持可见且不抖动、不遮挡 |
 | 行列操作 | 插入/删除/追加行列 | Grid/App tests | 数据和锁定格坐标同步移动 |
 | 查找替换 | 查找上一处/下一处、替换 | Unit/Grid tests | 大小写不敏感，替换跳过锁定格 |
 | 热刷新 | 干净页签自动刷新 | Tab model/App test | 每 5 秒检查外部变化并自动重读，不长期占用文件，顶部状态栏不显示热刷新轮询状态 |
@@ -209,6 +209,25 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; ArrowRight and typing through `Grid keyboard input` still opened editing, Enter returned focus to the proxy, grid stayed `931 x 512`, and console error log was empty.
+
+## Verification Run - 2026-06-05 Locked Cut Guard
+
+- Locking hardening: `Ctrl+X` / `Meta+X` now refuses to cut when the selected range contains any locked cell. It does not write clipboard data, does not clear cells, and reports `选区包含锁定格，不能剪切`, avoiding partial-cut states where locked cells remain but the UI says cut succeeded.
+- `npm test`: 8 files / 90 tests passed after adding a locked-cell cut regression.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; ArrowRight and typing through `Grid keyboard input` still opened editing, Enter returned focus to the proxy, grid stayed `931 x 512`, and console error log was empty.
+
+## Verification Run - 2026-06-05 Recursive Tree Search And C3 Freeze
+
+- Directory search hardening: typing in the left search box now recursively loads unopened local subdirectories and renders matching descendants even when their parent folder is collapsed, so CSV files under unopened folders can be found directly.
+- Default freeze update: newly opened CSV tabs now default to `冻结 2 行 / 2 列`, matching an automatic freeze point of C3.
+- `npm test`: 8 files / 91 tests passed after adding coverage for recursive search through unopened folders and updating default freeze assertions.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample tree loaded; left search placeholder showed `搜索全部 CSV`; searching `skill` showed `skill.csv`; clearing search by keyboard restored `monster.csv` and `skill.csv`; opening a sample CSV showed `冻结 2 行 / 2 列`; grid viewport stayed within the workspace and console error log was empty.
 
 ## Current Known Gaps
 

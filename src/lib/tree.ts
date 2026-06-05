@@ -41,6 +41,58 @@ export async function loadLocalChildren(node: TreeNode): Promise<TreeNode[]> {
   return sortTreeNodes(children);
 }
 
+export async function loadLocalDescendants(node: TreeNode): Promise<TreeNode> {
+  if (node.kind !== "directory") {
+    return node;
+  }
+
+  try {
+    const children = node.loaded ? node.children ?? [] : await loadLocalChildren(node);
+    const loadedChildren = await Promise.all(
+      children.map((child) => (child.kind === "directory" ? loadLocalDescendants(child) : Promise.resolve(child)))
+    );
+    return {
+      ...node,
+      children: loadedChildren,
+      loaded: true,
+      loading: false,
+      error: undefined
+    };
+  } catch (error) {
+    return {
+      ...node,
+      loading: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+export function hasUnloadedLocalDirectory(node: TreeNode): boolean {
+  if (node.kind !== "directory") {
+    return false;
+  }
+  if (node.directoryHandle && !node.loaded && !node.error) {
+    return true;
+  }
+  return Boolean(node.children?.some(hasUnloadedLocalDirectory));
+}
+
+export function mergeLoadedNodeState(current: TreeNode, loaded: TreeNode): TreeNode {
+  if (current.id !== loaded.id || current.kind !== loaded.kind) {
+    return current;
+  }
+  const currentChildren = new Map(current.children?.map((child) => [child.id, child]) ?? []);
+  const children = loaded.children?.map((child) => {
+    const existing = currentChildren.get(child.id);
+    return existing ? mergeLoadedNodeState(existing, child) : child;
+  });
+  return {
+    ...loaded,
+    expanded: current.expanded ?? loaded.expanded,
+    children
+  };
+}
+
 export type SampleManifest = {
   name: string;
   files: Array<{ path: string; url: string }>;

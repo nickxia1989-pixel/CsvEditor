@@ -455,6 +455,10 @@ export function GridEditor({
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
       event.preventDefault();
       setCopiedRange(null);
+      if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
+        onSetStatus("选区包含锁定格，不能剪切");
+        return;
+      }
       const text = matrixToTsv(
         tab.data,
         selectionRange.startRow,

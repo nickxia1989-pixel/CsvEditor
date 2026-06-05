@@ -63,7 +63,7 @@ describe("DirectoryPane", () => {
   it("forwards filter text changes to the app", () => {
     const { props } = renderDirectory();
 
-    fireEvent.change(screen.getByPlaceholderText("筛选已加载文件"), { target: { value: "monster" } });
+    fireEvent.change(screen.getByPlaceholderText("搜索全部 CSV"), { target: { value: "monster" } });
 
     expect(props.onFilterChange).toHaveBeenCalledWith("monster");
   });

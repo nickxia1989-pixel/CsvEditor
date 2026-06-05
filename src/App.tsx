@@ -42,7 +42,15 @@ import {
 } from "./lib/gridOps";
 import { clearHistory, pushUndo, redoTab, undoTab } from "./lib/history";
 import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion, reloadTabFromFileRef } from "./lib/tabModel";
-import { createLocalRoot, loadLocalChildren, loadSampleTree, updateNode } from "./lib/tree";
+import {
+  createLocalRoot,
+  hasUnloadedLocalDirectory,
+  loadLocalChildren,
+  loadLocalDescendants,
+  loadSampleTree,
+  mergeLoadedNodeState,
+  updateNode
+} from "./lib/tree";
 import type { CsvTab, TreeNode } from "./types";
 import { cellKey, normalizeSelection, singleCellSelection } from "./types";
 
@@ -153,6 +161,31 @@ export function App() {
       notify("error", error instanceof Error ? error.message : String(error));
     }
   }, [notify]);
+
+  useEffect(() => {
+    const query = treeFilter.trim();
+    if (!query || !root || !hasUnloadedLocalDirectory(root)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const loadedRoot = await loadLocalDescendants(root);
+        if (!cancelled) {
+          setRoot((current) => (current === root ? mergeLoadedNodeState(current, loadedRoot) : current));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          notify("error", error instanceof Error ? error.message : String(error));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [notify, root, treeFilter]);
 
   const handleToggleDirectory = useCallback(
     async (node: TreeNode) => {

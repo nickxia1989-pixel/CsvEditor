@@ -28,7 +28,7 @@ export async function createTabFromFileRef(fileRef: CsvFileRef, id: string): Pro
     selection: singleCellSelection(0, 0),
     zoom: 1,
     freezeRows: 2,
-    freezeCols: 1,
+    freezeCols: 2,
     colWidths: {},
     undoStack: [],
     redoStack: [],

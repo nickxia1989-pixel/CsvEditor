@@ -213,6 +213,23 @@ describe("GridEditor editing workflow", () => {
     expect(copiedCell).not.toHaveClass("copied");
   });
 
+  it("blocks cut when the selection contains a locked cell", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid(createTab({
+      lockedCells: ["0:0"]
+    }));
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "x", ctrlKey: true });
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(props.onClearRange).not.toHaveBeenCalled();
+    expect(props.onSetStatus).toHaveBeenCalledWith("选区包含锁定格，不能剪切");
+  });
+
   it("cancels inline editing when switching to another tab", () => {
     const { container, props, rerender } = renderGridWithResult(createTab({ id: "tab-1" }));
 

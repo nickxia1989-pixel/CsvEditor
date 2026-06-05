@@ -175,7 +175,7 @@ describe("App local directory flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "monster.csv" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
     expect(screen.getByRole("tab", { name: /monster\.csv/ })).toBeInTheDocument();
-    expect(screen.getByText("冻结 2 行 / 1 列")).toBeInTheDocument();
+    expect(screen.getByText("冻结 2 行 / 2 列")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "ID_EDIT" } });
 
@@ -214,6 +214,35 @@ describe("App local directory flow", () => {
     await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
     expect(first.getText()).toContain("ID_A,Name");
     expect(second.getText()).toContain("ID_B,Name");
+  });
+
+  it("finds CSV files inside unopened subdirectories when filtering", async () => {
+    const deepFile = new MockFileHandle("rare_monster.csv", "ID,Name\n9001,Rare");
+    const root = new MockDirectoryHandle("Tables", [
+      [
+        "monster",
+        new MockDirectoryHandle("monster", [
+          ["common.csv", new MockFileHandle("common.csv", "ID,Name\n1,Common")],
+          ["hidden", new MockDirectoryHandle("hidden", [["rare_monster.csv", deepFile]])]
+        ])
+      ],
+      ["npc.csv", new MockFileHandle("npc.csv", "ID,Name\n1,Npc")]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    expect(await screen.findByRole("button", { name: "monster" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "rare_monster.csv" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("搜索全部 CSV"), { target: { value: "rare_monster" } });
+
+    expect(await screen.findByRole("button", { name: "hidden" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "rare_monster.csv" })).toBeInTheDocument();
   });
 
   it("preserves untouched CSV row formatting when saving an edit", async () => {
@@ -638,7 +667,7 @@ describe("App local directory flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
     fireEvent.click(await screen.findByRole("button", { name: "freeze-cancel.csv" }));
-    await waitFor(() => expect(screen.getByText("冻结 2 行 / 1 列")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("冻结 2 行 / 2 列")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "取消冻结" }));
     expect(screen.getByText("冻结 0 行 / 0 列")).toBeInTheDocument();

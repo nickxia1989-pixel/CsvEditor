@@ -109,8 +109,8 @@ export function DirectoryPane({
         <input
           value={filter}
           onChange={(event) => onFilterChange(event.target.value)}
-          placeholder="筛选已加载文件"
-          aria-label="筛选已加载文件"
+          placeholder="搜索全部 CSV"
+          aria-label="搜索全部 CSV"
         />
       </label>
 
@@ -137,6 +137,7 @@ export function DirectoryPane({
                 <TreeRow
                   node={row.node}
                   depth={row.depth}
+                  searchActive={Boolean(normalizedFilter)}
                   onToggleDirectory={onToggleDirectory}
                   onOpenFile={onOpenFile}
                 />
@@ -157,16 +158,18 @@ export function DirectoryPane({
 type TreeRowProps = {
   node: TreeNode;
   depth: number;
+  searchActive: boolean;
   onToggleDirectory(node: TreeNode): void;
   onOpenFile(node: TreeNode): void;
 };
 
-function TreeRow({ node, depth, onToggleDirectory, onOpenFile }: TreeRowProps) {
+function TreeRow({ node, depth, searchActive, onToggleDirectory, onOpenFile }: TreeRowProps) {
   const isDirectory = node.kind === "directory";
+  const visuallyExpanded = isDirectory && (node.expanded || (searchActive && Boolean(node.children?.length)));
   const icon = isDirectory ? (
     node.loading ? (
       <Loader2 size={15} className="spin" />
-    ) : node.expanded ? (
+    ) : visuallyExpanded ? (
       <ChevronDown size={15} />
     ) : (
       <ChevronRight size={15} />
@@ -184,7 +187,7 @@ function TreeRow({ node, depth, onToggleDirectory, onOpenFile }: TreeRowProps) {
         title={node.path}
       >
         {icon}
-        {isDirectory ? node.expanded ? <FolderOpen size={15} /> : <Folder size={15} /> : <FileText size={15} />}
+        {isDirectory ? visuallyExpanded ? <FolderOpen size={15} /> : <Folder size={15} /> : <FileText size={15} />}
         <span>{node.name}</span>
       </button>
       {node.error ? <span className="tree-error">{node.error}</span> : null}
@@ -209,7 +212,7 @@ function collectTreeRows(node: TreeNode, depth: number, filter: string, rows: Fl
   }
 
   rows.push({ node, depth });
-  if (node.kind !== "directory" || !node.expanded || !node.children) {
+  if (node.kind !== "directory" || !node.children || (!node.expanded && !filter)) {
     return;
   }
 
