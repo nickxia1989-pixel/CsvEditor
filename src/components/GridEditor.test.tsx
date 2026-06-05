@@ -250,6 +250,21 @@ describe("GridEditor toolbar", () => {
     ]);
   });
 
+  it("selects the used range with Ctrl+A from the keyboard proxy", () => {
+    const props = renderGrid();
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "a", ctrlKey: true });
+
+    expect(props.onSelectionChange).toHaveBeenCalledWith({
+      anchorRow: 2,
+      anchorCol: 1,
+      focusRow: 0,
+      focusCol: 0
+    });
+    expect(props.onSetStatus).toHaveBeenCalledWith("已全选已用区域");
+  });
+
   it("opens an editor from keyboard input and returns focus to the keyboard proxy after Enter", async () => {
     const { container, props } = renderGridWithResult();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
@@ -371,6 +386,24 @@ describe("GridEditor toolbar", () => {
     rerender(<GridEditor {...props} tab={createTab({ selection: rowSelection })} />);
 
     await waitFor(() => expect(grid.scrollLeft).toBe(260));
+  });
+
+  it("does not scroll back to the first cell when selecting all with Ctrl+A", async () => {
+    const { props, rerender } = renderGridWithResult();
+    const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLElement;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 96 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 180 });
+    grid.scrollTop = 240;
+    grid.scrollLeft = 260;
+
+    fireEvent.keyDown(screen.getByLabelText("Grid keyboard input"), { key: "a", ctrlKey: true });
+    const allSelection = props.onSelectionChange.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ selection: allSelection })} />);
+
+    await waitFor(() => {
+      expect(grid.scrollTop).toBe(240);
+      expect(grid.scrollLeft).toBe(260);
+    });
   });
 
   it("still scrolls focused cells into view for normal selection changes", async () => {

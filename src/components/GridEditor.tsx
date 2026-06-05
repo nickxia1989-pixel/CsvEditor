@@ -444,6 +444,14 @@ export function GridEditor({
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      suppressNextSelectionScrollRef.current = true;
+      onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
+      onSetStatus("已全选已用区域");
+      return;
+    }
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
       event.preventDefault();
       const text = matrixToTsv(
@@ -900,6 +908,7 @@ export function GridEditor({
               event.preventDefault();
               suppressNextSelectionScrollRef.current = true;
               onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
+              onSetStatus("已全选已用区域");
               focusGridInputSoon();
             }}
           />
