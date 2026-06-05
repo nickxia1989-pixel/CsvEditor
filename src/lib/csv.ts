@@ -154,11 +154,23 @@ export function matrixToTsv(
 }
 
 export function parseTsv(text: string): string[][] {
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  if (lines.length > 1 && lines[lines.length - 1] === "") {
-    lines.pop();
+  const parsed = Papa.parse<string[]>(text, {
+    delimiter: "\t",
+    skipEmptyLines: false,
+    dynamicTyping: false
+  });
+  const seriousError = parsed.errors.find((error) => error.type !== "Delimiter");
+  if (seriousError) {
+    throw new Error(`TSV parse failed at row ${seriousError.row ?? "?"}: ${seriousError.message}`);
   }
-  return lines.map((line) => line.split("\t"));
+  const data = parsed.data.map((row) => row.map((value) => value ?? ""));
+  if (data.length > 1 && /(\r\n|\n|\r)$/.test(text)) {
+    const last = data[data.length - 1];
+    if (last && last.length === 1 && last[0] === "") {
+      data.pop();
+    }
+  }
+  return data;
 }
 
 export function maxColumnCount(data: CsvMatrix): number {

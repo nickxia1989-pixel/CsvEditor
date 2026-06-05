@@ -288,6 +288,18 @@ describe("GridEditor toolbar", () => {
     ]);
   });
 
+  it("pastes quoted TSV values from Excel without splitting embedded tabs or newlines", () => {
+    const props = renderGrid();
+
+    fireEvent.paste(screen.getByRole("grid", { name: "CSV grid" }), {
+      clipboardData: {
+        getData: () => '"A\tinside"\t"Line 1\nLine 2"'
+      }
+    });
+
+    expect(props.onPaste).toHaveBeenCalledWith(0, 0, [["A\tinside", "Line 1\nLine 2"]]);
+  });
+
   it("copies and pastes through the keyboard proxy when it owns focus", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {

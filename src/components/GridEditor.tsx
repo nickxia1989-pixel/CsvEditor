@@ -580,15 +580,19 @@ export function GridEditor({
       return;
     }
     event.preventDefault();
-    onPaste(
-      selectionRange.startRow,
-      selectionRange.startCol,
-      expandPasteValues(
-        parseTsv(text),
-        selectionRange.endRow - selectionRange.startRow + 1,
-        selectionRange.endCol - selectionRange.startCol + 1
-      )
-    );
+    try {
+      onPaste(
+        selectionRange.startRow,
+        selectionRange.startCol,
+        expandPasteValues(
+          parseTsv(text),
+          selectionRange.endRow - selectionRange.startRow + 1,
+          selectionRange.endCol - selectionRange.startCol + 1
+        )
+      );
+    } catch (error) {
+      onSetStatus(error instanceof Error ? error.message : "粘贴内容解析失败");
+    }
   };
 
   const renderColumnHeader = (col: number, keyPrefix: string, className = "") => (

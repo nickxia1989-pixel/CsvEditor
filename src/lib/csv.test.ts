@@ -55,6 +55,12 @@ describe("csv helpers", () => {
     ]);
   });
 
+  it("parses Excel-style quoted TSV clipboard values", () => {
+    expect(parseTsv('"A\tinside"\t"Line 1\nLine 2"\t"He said ""Hi"""')).toEqual([
+      ["A\tinside", "Line 1\nLine 2", 'He said "Hi"']
+    ]);
+  });
+
   it("serializes using the detected delimiter", () => {
     const text = unparseCsvData(
       [

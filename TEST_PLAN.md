@@ -192,6 +192,15 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; ArrowRight and typing through `Grid keyboard input` still opened editing, Enter returned focus to the proxy, copied-cell count stayed `0` without an active copy, grid stayed `931 x 512`, and console error log was empty.
 
+## Verification Run - 2026-06-05 Quoted TSV Paste
+
+- Paste hardening: TSV clipboard parsing now uses a structured tab-delimited parser, so Excel-style quoted values with embedded tabs, embedded newlines, or escaped quotes paste into the intended cells instead of being split into extra rows or columns.
+- `npm test`: 8 files / 87 tests passed after adding parser and GridEditor regressions for quoted TSV paste.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; ArrowRight and typing through `Grid keyboard input` still opened editing, Enter returned focus to the proxy, grid stayed `931 x 512`, and console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
