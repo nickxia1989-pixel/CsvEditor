@@ -454,6 +454,7 @@ export function GridEditor({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
       event.preventDefault();
+      setCopiedRange(null);
       const text = matrixToTsv(
         tab.data,
         selectionRange.startRow,
@@ -466,7 +467,6 @@ export function GridEditor({
           throw new Error("Clipboard API unavailable");
         }
         await navigator.clipboard.writeText(text);
-        setCopiedRange(null);
         onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
         onSetStatus(`已剪切 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
       } catch {
@@ -477,6 +477,7 @@ export function GridEditor({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
       event.preventDefault();
+      setCopiedRange(null);
       const text = matrixToTsv(
         tab.data,
         selectionRange.startRow,

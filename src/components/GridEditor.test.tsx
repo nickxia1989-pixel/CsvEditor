@@ -118,6 +118,26 @@ describe("GridEditor editing workflow", () => {
     await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入"));
   });
 
+  it("clears the previous copied highlight when a new copy fails", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const copiedCell = screen.getByRole("gridcell", { name: "A1" });
+
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(copiedCell).toHaveClass("copied"));
+
+    Reflect.deleteProperty(navigator, "clipboard");
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+
+    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入"));
+    expect(copiedCell).not.toHaveClass("copied");
+  });
+
   it("cuts the selected TSV range only after clipboard write succeeds", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -147,6 +167,27 @@ describe("GridEditor editing workflow", () => {
 
     await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("剪切失败：浏览器未允许剪贴板写入"));
     expect(props.onClearRange).not.toHaveBeenCalled();
+  });
+
+  it("clears the previous copied highlight when a cut attempt fails", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const copiedCell = screen.getByRole("gridcell", { name: "A1" });
+
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(copiedCell).toHaveClass("copied"));
+
+    Reflect.deleteProperty(navigator, "clipboard");
+    fireEvent.keyDown(grid, { key: "x", ctrlKey: true });
+
+    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("剪切失败：浏览器未允许剪贴板写入"));
+    expect(props.onClearRange).not.toHaveBeenCalled();
+    expect(copiedCell).not.toHaveClass("copied");
   });
 
   it("cancels inline editing when switching to another tab", () => {

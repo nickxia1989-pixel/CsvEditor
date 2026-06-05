@@ -183,6 +183,15 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; ArrowRight and typing through `Grid keyboard input` still opened editing, Enter returned focus to the proxy, grid stayed `931 x 512`, and console error log was empty. Native clipboard shortcut injection remains disabled in this browser automation environment, so `Ctrl+X` success/failure semantics are covered by component tests.
 
+## Verification Run - 2026-06-05 Clipboard State Cleanup
+
+- Copy-state hardening: every new copy or cut attempt now clears the previous copied-cell highlight first. A failed clipboard write no longer leaves stale dashed outlines that make an old selection look like the current copied range.
+- `npm test`: 8 files / 85 tests passed after adding regressions for failed copy and failed cut clearing stale copied highlights without clearing data.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235904 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` loaded; ArrowRight and typing through `Grid keyboard input` still opened editing, Enter returned focus to the proxy, copied-cell count stayed `0` without an active copy, grid stayed `931 x 512`, and console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
