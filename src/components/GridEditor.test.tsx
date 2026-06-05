@@ -592,6 +592,39 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).not.toHaveBeenCalled();
   });
 
+  it("commits the inline edit when clicking a different cell", () => {
+    const { container, props } = renderGridWithResult();
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }));
+
+    expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "Edited ID");
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(1, 1));
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+  });
+
+  it("commits the inline edit before selecting a header", () => {
+    const { container, props } = renderGridWithResult();
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+
+    fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }));
+
+    expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "Edited ID");
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 2,
+      anchorCol: 1,
+      focusRow: 0,
+      focusCol: 1
+    });
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+  });
+
   it("selects whole columns and rows from the headers", () => {
     const props = renderGrid();
 

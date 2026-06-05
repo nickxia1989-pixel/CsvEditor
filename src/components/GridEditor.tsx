@@ -678,6 +678,7 @@ export function GridEditor({
       }}
       onPointerDown={(event) => {
         event.preventDefault();
+        commitEditing(false);
         suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: realEndRow, anchorCol: col, focusRow: 0, focusCol: col });
         focusGridInputSoon();
@@ -713,6 +714,7 @@ export function GridEditor({
       }}
       onPointerDown={(event) => {
         event.preventDefault();
+        commitEditing(false);
         suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
         focusGridInputSoon();
@@ -759,6 +761,7 @@ export function GridEditor({
             return;
           }
           event.preventDefault();
+          commitEditing(false);
           dragAnchorRef.current = { row, col };
           setDragging(true);
           onSelectionChange(singleCellSelection(row, col));
@@ -1018,6 +1021,7 @@ export function GridEditor({
             }}
             onPointerDown={(event) => {
               event.preventDefault();
+              commitEditing(false);
               suppressNextSelectionScrollRef.current = true;
               onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
               onSetStatus("已全选已用区域");

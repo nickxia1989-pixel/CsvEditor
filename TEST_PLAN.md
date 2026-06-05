@@ -270,6 +270,16 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5174/` because 5173 was already occupied: sample tree loaded; searching `skill` showed `skill.csv`; clearing search by keyboard restored the full sample tree; opening `monster.csv` showed `冻结 2 行 / 2 列`; formula-bar editing marked the tab dirty; grid viewport measured `948 x 529`; console error log was empty. The temporary dev service was stopped after verification.
 
+## Verification Run - 2026-06-05 Commit Edit On Pointer Selection
+
+- Editing workflow hardening: when an inline cell editor is active, clicking another cell, a row header, a column header, or the corner select-all header now commits the edit before changing selection. This matches the expected spreadsheet behavior where clicking elsewhere accepts the current edit instead of leaving a stale editor behind.
+- `npm test -- src/components/GridEditor.test.tsx`: 1 file / 38 tests passed after adding regressions for clicking another cell and selecting a header while editing.
+- `npm test`: 8 files / 104 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5174/` because 5173 was already occupied: sample `monster.csv` opened; double-clicking `A1`, changing it to `Header Edited`, and directly clicking `C3` committed `A1`, removed the inline editor, moved the selected label to `C3`, marked `未保存 1`, kept `冻结 2 行 / 2 列`, measured the grid at `948 x 529`, and produced 0 console errors. The temporary dev service was stopped after verification.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
