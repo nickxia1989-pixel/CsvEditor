@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -21,7 +21,7 @@ import {
   parseTsv,
   readCell
 } from "../lib/csv";
-import type { CsvMatrix, CsvSelection, CsvTab } from "../types";
+import type { CsvMatrix, CsvSelection, CsvTab, GridScrollPosition } from "../types";
 import { cellKey, normalizeSelection, singleCellSelection } from "../types";
 
 const ROW_HEADER_WIDTH = 56;
@@ -30,6 +30,7 @@ const DEFAULT_COL_WIDTH = 122;
 const DEFAULT_ROW_HEIGHT = 28;
 const MIN_COL_WIDTH = 54;
 const OVERSCAN = 6;
+export const COMMIT_ACTIVE_EDIT_EVENT = "csv-editor:commit-active-edit";
 
 type GridEditorProps = {
   tab: CsvTab;
@@ -45,6 +46,9 @@ type GridEditorProps = {
   onSetFindQuery(query: string): void;
   onSetReplaceValue(value: string): void;
   onSetStatus(status: string): void;
+  onEditDraftDirtyChange(dirty: boolean): void;
+  scrollPosition: GridScrollPosition;
+  onScrollPositionChange(tabId: string, position: GridScrollPosition): void;
   onReplaceCurrent(): void;
   onReplaceAll(): void;
   canUndo: boolean;
@@ -87,6 +91,9 @@ export function GridEditor({
   onSetFindQuery,
   onSetReplaceValue,
   onSetStatus,
+  onEditDraftDirtyChange,
+  scrollPosition,
+  onScrollPositionChange,
   onReplaceCurrent,
   onReplaceAll,
   canUndo,
@@ -150,17 +157,45 @@ export function GridEditor({
   const totalWidth = rowHeaderWidth + colOffsets[maxCols];
   const totalHeight = headerHeight + rowCount * rowHeight;
 
+  useLayoutEffect(() => {
+    const element = viewportRef.current;
+    if (!element) {
+      return;
+    }
+    const nextScrollTop = clamp(scrollPosition.scrollTop, 0, Math.max(0, totalHeight - element.clientHeight));
+    const nextScrollLeft = clamp(scrollPosition.scrollLeft, 0, Math.max(0, totalWidth - element.clientWidth));
+    suppressNextSelectionScrollRef.current = true;
+    element.scrollTop = nextScrollTop;
+    element.scrollLeft = nextScrollLeft;
+    const nextViewport = {
+      width: element.clientWidth,
+      height: element.clientHeight,
+      scrollTop: element.scrollTop,
+      scrollLeft: element.scrollLeft
+    };
+    setViewport(nextViewport);
+    onScrollPositionChange(tab.id, {
+      scrollTop: nextViewport.scrollTop,
+      scrollLeft: nextViewport.scrollLeft
+    });
+  }, [tab.id]);
+
   useEffect(() => {
     const element = viewportRef.current;
     if (!element) {
       return undefined;
     }
     const updateViewportNow = () => {
-      setViewport({
+      const nextViewport = {
         width: element.clientWidth,
         height: element.clientHeight,
         scrollTop: element.scrollTop,
         scrollLeft: element.scrollLeft
+      };
+      setViewport(nextViewport);
+      onScrollPositionChange(tab.id, {
+        scrollTop: nextViewport.scrollTop,
+        scrollLeft: nextViewport.scrollLeft
       });
     };
     const scheduleViewportUpdate = () => {
@@ -169,11 +204,16 @@ export function GridEditor({
       }
       viewportFrameRef.current = window.requestAnimationFrame(() => {
         viewportFrameRef.current = null;
-        setViewport({
+        const nextViewport = {
           width: element.clientWidth,
           height: element.clientHeight,
           scrollTop: element.scrollTop,
           scrollLeft: element.scrollLeft
+        };
+        setViewport(nextViewport);
+        onScrollPositionChange(tab.id, {
+          scrollTop: nextViewport.scrollTop,
+          scrollLeft: nextViewport.scrollLeft
         });
       });
     };
@@ -189,7 +229,7 @@ export function GridEditor({
         viewportFrameRef.current = null;
       }
     };
-  }, []);
+  }, [onScrollPositionChange, tab.id]);
 
   useEffect(() => {
     if (!resizeState) {
@@ -304,9 +344,10 @@ export function GridEditor({
     setEditing(null);
     setResizeState(null);
     setCopiedRange(null);
+    onEditDraftDirtyChange(false);
     dragAnchorRef.current = null;
     setDragging(false);
-  }, [tab.id]);
+  }, [onEditDraftDirtyChange, tab.id]);
 
   const focusGridInputSoon = () => {
     window.requestAnimationFrame(() => {
@@ -323,6 +364,7 @@ export function GridEditor({
       onSetCell(editing.row, editing.col, editing.value);
     }
     setEditing(null);
+    onEditDraftDirtyChange(false);
     if (refocusGrid) {
       focusGridInputSoon();
     }
@@ -343,6 +385,7 @@ export function GridEditor({
       return;
     }
     setCopiedRange(null);
+    onEditDraftDirtyChange(false);
     setEditing({
       row,
       col,
@@ -371,6 +414,12 @@ export function GridEditor({
     composingInputRef.current = false;
     beginEditFromKeyboardText(event.currentTarget.value || event.data);
   };
+
+  useEffect(() => {
+    const handleCommitActiveEdit = () => commitEditing(false);
+    window.addEventListener(COMMIT_ACTIVE_EDIT_EVENT, handleCommitActiveEdit);
+    return () => window.removeEventListener(COMMIT_ACTIVE_EDIT_EVENT, handleCommitActiveEdit);
+  });
 
   const updateDragSelection = (row: number, col: number) => {
     const anchor = dragAnchorRef.current;
@@ -786,7 +835,10 @@ export function GridEditor({
             value={editing.value}
             autoFocus
             onPointerDown={(event) => event.stopPropagation()}
-            onChange={(event) => setEditing({ row, col, value: event.target.value })}
+            onChange={(event) => {
+              setEditing({ row, col, value: event.target.value });
+              onEditDraftDirtyChange(event.target.value !== readCell(tab.data, row, col));
+            }}
             onBlur={() => commitEditing(false)}
             onKeyDown={(event) => {
               if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -800,6 +852,7 @@ export function GridEditor({
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 setEditing(null);
+                onEditDraftDirtyChange(false);
                 focusGridInputSoon();
               } else if (event.key === "Tab") {
                 event.preventDefault();

@@ -301,6 +301,18 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5174/` because 5173 was already occupied: sample `monster.csv` opened; locking `A1`, selecting column A, and pressing Delete changed the status to `已清空选区，跳过锁定 1 个`, marked the tab dirty, kept `冻结 2 行 / 2 列`, measured the grid at `948 x 529`, and produced 0 console errors. The temporary dev service was stopped after verification.
 
+## Verification Run - 2026-06-05 Inline Draft Dirty Protection And Tab Scroll Memory
+
+- Unsaved-state hardening: editing an inline cell now marks the active tab as dirty before the edit is committed, and external actions such as tab activation, tab close, refresh, toolbar save, and save-all first ask the grid to commit any active inline edit before continuing.
+- View-state hardening: each open tab now remembers its grid scroll position independently, so switching tabs restores the previous vertical and horizontal viewport instead of snapping back to the selected cell.
+- `npm test -- src/App.test.tsx`: 1 file / 37 tests passed after adding regressions for toolbar save of an uncommitted inline edit, unload/close protection for an uncommitted inline edit, and per-tab grid scroll restoration.
+- `npm test -- src/components/GridEditor.test.tsx`: 1 file / 39 tests passed after wiring the new draft-dirty callback into component tests.
+- `npm test`: 8 files / 112 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` and `skill.csv` opened; scrolling them to `scrollTop/scrollLeft` `620/260` and `240/120`, then switching tabs, restored each tab to its own saved viewport; the grid measured `948 x 529`, `冻结 2 行 / 2 列` remained visible, and console error log was empty. The sample source is read-only, so toolbar write correctness is covered by the App integration test.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

@@ -305,12 +305,77 @@ describe("App local directory flow", () => {
     await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
 
     fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
-    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
     fireEvent.change(editor, { target: { value: "Edited ID" } });
+    await waitFor(() => expect(screen.getByText("未保存 1")).toBeInTheDocument());
     fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
 
     await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
     expect(file.getText()).toBe("Edited ID,Name\n1,Alpha");
+  });
+
+  it("saves an uncommitted inline editor value from the toolbar save button", async () => {
+    const file = new MockFileHandle("toolbar-inline-save.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["toolbar-inline-save.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "toolbar-inline-save.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "toolbar-inline-save.csv未保存" })).toBeInTheDocument());
+    const saveButton = screen.getByRole("button", { name: "保存" });
+    expect(saveButton).toBeEnabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("Edited ID,Name\n1,Alpha");
+  });
+
+  it("blocks browser unload for an uncommitted inline editor value", async () => {
+    const file = new MockFileHandle("unload-inline.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["unload-inline.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "unload-inline.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+    await waitFor(() => expect(screen.getByText("未保存 1")).toBeInTheDocument());
+
+    const unloadEvent = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    window.dispatchEvent(unloadEvent);
+
+    expect(unloadEvent.defaultPrevented).toBe(true);
   });
 
   it("preserves raw field formatting when editing a virtual new column", async () => {
@@ -453,6 +518,50 @@ describe("App local directory flow", () => {
     expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("restores each tab scroll position when switching tabs", async () => {
+    const makeCsv = (prefix: string) =>
+      Array.from({ length: 80 }, (_, row) => `${prefix}${row},Name ${row},Value ${row}`).join("\n");
+    const first = new MockFileHandle("first.csv", makeCsv("A"));
+    const second = new MockFileHandle("second.csv", makeCsv("B"));
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", first],
+      ["second.csv", second]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLDivElement;
+    grid.scrollTop = 420;
+    grid.scrollLeft = 180;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(screen.getByRole("rowheader", { name: "Row 14" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(grid.scrollTop).toBe(0));
+
+    grid.scrollTop = 84;
+    grid.scrollLeft = 60;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(screen.getByRole("rowheader", { name: "Row 9" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: "first.csv" }));
+    await waitFor(() => expect(grid.scrollTop).toBe(420));
+    expect(grid.scrollLeft).toBe(180);
+
+    fireEvent.click(screen.getByRole("tab", { name: "second.csv" }));
+    await waitFor(() => expect(grid.scrollTop).toBe(84));
+    expect(grid.scrollLeft).toBe(60);
+  });
+
   it("keeps a dirty tab open when close confirmation is cancelled", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const file = new MockFileHandle("close-safe.csv", "ID,Name\n1,Alpha");
@@ -472,8 +581,37 @@ describe("App local directory flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "关闭 close-safe.csv" }));
 
-    expect(confirm).toHaveBeenCalledWith("close-safe.csv 有未保存修改，确认关闭？");
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("close-safe.csv 有未保存修改，确认关闭？"));
     expect(screen.getByRole("tab", { name: "close-safe.csv未保存" })).toBeInTheDocument();
+  });
+
+  it("protects an uncommitted inline edit when closing the tab", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const file = new MockFileHandle("close-inline.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["close-inline.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "close-inline.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+    await waitFor(() => expect(screen.getByRole("tab", { name: "close-inline.csv未保存" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "关闭 close-inline.csv" }));
+
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("close-inline.csv 有未保存修改，确认关闭？"));
+    expect(screen.getByRole("tab", { name: "close-inline.csv未保存" })).toBeInTheDocument();
   });
 
   it("closes a dirty tab when close confirmation is accepted", async () => {
@@ -733,7 +871,7 @@ describe("App local directory flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
 
-    expect(confirm).toHaveBeenCalledWith("refresh-cancel.csv 有未保存修改。刷新会丢弃这些修改，是否继续？");
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("refresh-cancel.csv 有未保存修改。刷新会丢弃这些修改，是否继续？"));
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("LOCAL");
     expect(screen.getByText("未保存 1")).toBeInTheDocument();
   });

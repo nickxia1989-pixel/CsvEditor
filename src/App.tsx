@@ -16,7 +16,7 @@ import {
   ShieldAlert
 } from "lucide-react";
 import { DirectoryPane } from "./components/DirectoryPane";
-import { GridEditor } from "./components/GridEditor";
+import { COMMIT_ACTIVE_EDIT_EVENT, GridEditor } from "./components/GridEditor";
 import { TabStrip } from "./components/TabStrip";
 import {
   maxColumnCount,
@@ -52,7 +52,7 @@ import {
   mergeLoadedNodeState,
   updateNode
 } from "./lib/tree";
-import type { CsvTab, TreeNode } from "./types";
+import type { CsvTab, GridScrollPosition, TreeNode } from "./types";
 import { cellKey, normalizeSelection, singleCellSelection } from "./types";
 
 const HOT_REFRESH_INTERVAL_MS = 5000;
@@ -61,6 +61,7 @@ const SIDEBAR_MAX_WIDTH = 520;
 const SIDEBAR_DEFAULT_WIDTH = 310;
 const SIDEBAR_KEYBOARD_STEP = 20;
 const SIDEBAR_KEYBOARD_LARGE_STEP = 60;
+const DEFAULT_GRID_SCROLL_POSITION: GridScrollPosition = { scrollTop: 0, scrollLeft: 0 };
 
 type Notice = {
   tone: "info" | "success" | "warning" | "error";
@@ -81,7 +82,10 @@ export function App() {
   const [notice, setNotice] = useState<Notice>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sidebarResizing, setSidebarResizing] = useState(false);
+  const [activeEditDraftDirty, setActiveEditDraftDirty] = useState(false);
   const tabsRef = useRef(tabs);
+  const activeEditDraftDirtyRef = useRef(activeEditDraftDirty);
+  const tabScrollPositionsRef = useRef<Record<string, GridScrollPosition>>({});
   const pollBusyRef = useRef(false);
   const openingPathsRef = useRef(new Set<string>());
   const pendingActivatePathRef = useRef<string | null>(null);
@@ -92,14 +96,41 @@ export function App() {
     tabsRef.current = tabs;
   }, [tabs]);
 
+  useEffect(() => {
+    activeEditDraftDirtyRef.current = activeEditDraftDirty;
+  }, [activeEditDraftDirty]);
+
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [activeTabId, tabs]);
-  const dirtyCount = tabs.filter((tab) => tab.dirty).length;
+  const activeScrollPosition = activeTabId
+    ? tabScrollPositionsRef.current[activeTabId] ?? DEFAULT_GRID_SCROLL_POSITION
+    : DEFAULT_GRID_SCROLL_POSITION;
+  const visibleTabs = useMemo(
+    () =>
+      activeEditDraftDirty && activeTabId
+        ? tabs.map((tab) => (tab.id === activeTabId ? { ...tab, dirty: true } : tab))
+        : tabs,
+    [activeEditDraftDirty, activeTabId, tabs]
+  );
+  const dirtyCount = tabs.filter((tab) => tab.dirty).length + (activeEditDraftDirty && activeTab && !activeTab.dirty ? 1 : 0);
+
+  useEffect(() => {
+    setActiveEditDraftDirty(false);
+  }, [activeTabId]);
 
   const notify = useCallback((tone: NoticeTone, message: string) => {
     setNotice({ tone, message });
     window.setTimeout(() => {
       setNotice((current) => (current?.message === message ? null : current));
     }, 4200);
+  }, []);
+
+  const runAfterActiveEditCommit = useCallback((action: () => void) => {
+    window.dispatchEvent(new Event(COMMIT_ACTIVE_EDIT_EVENT));
+    window.setTimeout(action, 0);
+  }, []);
+
+  const rememberTabScrollPosition = useCallback((tabId: string, position: GridScrollPosition) => {
+    tabScrollPositionsRef.current[tabId] = position;
   }, []);
 
   const patchTab = useCallback((id: string, updater: (tab: CsvTab) => CsvTab) => {
@@ -378,6 +409,7 @@ export function App() {
           return;
         }
       }
+      delete tabScrollPositionsRef.current[id];
       setTabs((current) => current.filter((item) => item.id !== id));
       setActiveTabId((current) => {
         if (current !== id) {
@@ -390,9 +422,19 @@ export function App() {
     []
   );
 
+  const activateTabAfterEditCommit = useCallback(
+    (id: string) => runAfterActiveEditCommit(() => setActiveTabId(id)),
+    [runAfterActiveEditCommit]
+  );
+
+  const closeTabAfterEditCommit = useCallback(
+    (id: string) => runAfterActiveEditCommit(() => closeTab(id)),
+    [closeTab, runAfterActiveEditCommit]
+  );
+
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (tabsRef.current.some((tab) => tab.dirty)) {
+      if (tabsRef.current.some((tab) => tab.dirty) || activeEditDraftDirtyRef.current) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -576,12 +618,17 @@ export function App() {
 
       <main className="workspace">
         <header className="topbar">
-          <TabStrip tabs={tabs} activeTabId={activeTabId} onActivate={setActiveTabId} onClose={closeTab} />
+          <TabStrip
+            tabs={visibleTabs}
+            activeTabId={activeTabId}
+            onActivate={activateTabAfterEditCommit}
+            onClose={closeTabAfterEditCommit}
+          />
           <div className="topbar-actions">
             <button
               className="toolbar-button"
               disabled={!activeTab}
-              onClick={() => activeTabId && void reloadTabFromDisk(activeTabId)}
+              onClick={() => activeTabId && runAfterActiveEditCommit(() => void reloadTabFromDisk(activeTabId))}
               title="从磁盘重新读取当前 CSV"
             >
               <RefreshCw size={15} />
@@ -589,8 +636,8 @@ export function App() {
             </button>
             <button
               className="toolbar-button save"
-              disabled={!activeTab || !activeTab.dirty || !activeTab.fileRef.writable}
-              onClick={() => activeTabId && void saveTab(activeTabId)}
+              disabled={!activeTab || (!activeTab.dirty && !activeEditDraftDirty) || !activeTab.fileRef.writable}
+              onClick={() => activeTabId && runAfterActiveEditCommit(() => void saveTab(activeTabId))}
               title="保存当前 CSV"
             >
               <Save size={15} />
@@ -599,7 +646,7 @@ export function App() {
             <button
               className="toolbar-button"
               disabled={dirtyCount === 0}
-              onClick={() => void saveAllDirtyTabs()}
+              onClick={() => runAfterActiveEditCommit(() => void saveAllDirtyTabs())}
               title="保存所有未保存且可写的 CSV"
             >
               <Save size={15} />
@@ -633,6 +680,8 @@ export function App() {
         {activeTab ? (
           <GridEditor
             tab={activeTab}
+            scrollPosition={activeScrollPosition}
+            onScrollPositionChange={rememberTabScrollPosition}
             onSelectionChange={(selection) => updateActiveTab((tab) => ({ ...tab, selection }))}
             onSetCell={(row, col, value) =>
               updateActiveTab((tab) => {
@@ -754,6 +803,7 @@ export function App() {
             onSetFindQuery={(findQuery) => updateActiveTab((tab) => ({ ...tab, findQuery }))}
             onSetReplaceValue={(replaceValue) => updateActiveTab((tab) => ({ ...tab, replaceValue }))}
             onSetStatus={(status) => updateActiveTab((tab) => ({ ...tab, status }))}
+            onEditDraftDirtyChange={setActiveEditDraftDirty}
             onReplaceCurrent={() =>
               updateActiveTab((tab) => {
                 const query = tab.findQuery.trim();

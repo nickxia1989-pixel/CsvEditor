@@ -10,6 +10,11 @@ export type CsvSelection = {
   focusCol: number;
 };
 
+export type GridScrollPosition = {
+  scrollTop: number;
+  scrollLeft: number;
+};
+
 export type CsvTab = {
   id: string;
   name: string;
