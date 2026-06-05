@@ -142,15 +142,18 @@ export function matrixToTsv(
   endRow: number,
   endCol: number
 ): string {
-  const rows: string[] = [];
+  const rows: string[][] = [];
   for (let row = startRow; row <= endRow; row += 1) {
     const values: string[] = [];
     for (let col = startCol; col <= endCol; col += 1) {
       values.push(readCell(data, row, col));
     }
-    rows.push(values.join("\t"));
+    rows.push(values);
   }
-  return rows.join("\n");
+  return Papa.unparse(rows, {
+    delimiter: "\t",
+    newline: "\n"
+  });
 }
 
 export function parseTsv(text: string): string[][] {

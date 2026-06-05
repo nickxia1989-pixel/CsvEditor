@@ -110,6 +110,29 @@ describe("GridEditor editing workflow", () => {
     expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied");
   });
 
+  it("copies complex cell values as quoted TSV", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    renderGrid(createTab({
+      data: [["A\tinside", "Line 1\nLine 2", 'He said "Hi"']],
+      selection: {
+        anchorRow: 0,
+        anchorCol: 0,
+        focusRow: 0,
+        focusCol: 2
+      }
+    }));
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "c", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith('"A\tinside"\t"Line 1\nLine 2"\t"He said ""Hi"""')
+    );
+  });
+
   it("reports a copy failure when the browser clipboard API is unavailable", async () => {
     const props = renderGrid();
 

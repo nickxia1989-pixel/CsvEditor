@@ -48,6 +48,19 @@ describe("csv helpers", () => {
     ]);
   });
 
+  it("quotes TSV clipboard values that contain tabs, newlines, or quotes", () => {
+    const tsv = matrixToTsv(
+      [["A\tinside", "Line 1\nLine 2", 'He said "Hi"']],
+      0,
+      0,
+      0,
+      2
+    );
+
+    expect(tsv).toBe('"A\tinside"\t"Line 1\nLine 2"\t"He said ""Hi"""');
+    expect(parseTsv(tsv)).toEqual([["A\tinside", "Line 1\nLine 2", 'He said "Hi"']]);
+  });
+
   it("does not create an extra row for a trailing TSV newline", () => {
     expect(parseTsv("A\tB\nC\tD\n")).toEqual([
       ["A", "B"],
