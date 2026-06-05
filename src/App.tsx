@@ -656,25 +656,29 @@ export function App() {
                 const locked = new Set(tab.lockedCells);
                 let data = tab.data;
                 let changed = false;
+                let skippedLocked = 0;
                 values.forEach((line, rowOffset) => {
                   line.forEach((value, colOffset) => {
                     const row = startRow + rowOffset;
                     const col = startCol + colOffset;
-                    if (!locked.has(cellKey(row, col)) && readCell(data, row, col) !== value) {
+                    if (locked.has(cellKey(row, col))) {
+                      skippedLocked += 1;
+                    } else if (readCell(data, row, col) !== value) {
                       data = writeCell(data, row, col, value);
                       changed = true;
                     }
                   });
                 });
+                const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 个` : "";
                 if (!changed) {
-                  return { ...tab, status: "粘贴内容没有改变" };
+                  return { ...tab, status: `粘贴内容没有改变${lockStatus}` };
                 }
                 const base = pushUndo(tab);
                 return {
                   ...base,
                   data,
                   dirty: true,
-                  status: "已粘贴"
+                  status: `已粘贴${lockStatus}`
                 };
               })
             }
@@ -684,23 +688,30 @@ export function App() {
                 const locked = new Set(tab.lockedCells);
                 let data = tab.data;
                 let changed = false;
+                let skippedLocked = 0;
                 for (let row = range.startRow; row <= range.endRow; row += 1) {
                   if (row >= tab.data.length) {
                     continue;
                   }
                   const rowWidth = tab.data[row]?.length ?? 0;
                   for (let col = range.startCol; col <= range.endCol; col += 1) {
-                    if (col < rowWidth && !locked.has(cellKey(row, col)) && readCell(data, row, col) !== "") {
+                    if (col >= rowWidth) {
+                      continue;
+                    }
+                    if (locked.has(cellKey(row, col))) {
+                      skippedLocked += 1;
+                    } else if (readCell(data, row, col) !== "") {
                       data = writeCell(data, row, col, "");
                       changed = true;
                     }
                   }
                 }
+                const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 个` : "";
                 if (!changed) {
-                  return { ...tab, status: "没有可清空的内容" };
+                  return { ...tab, status: `没有可清空的内容${lockStatus}` };
                 }
                 const base = pushUndo(tab);
-                return { ...base, data, dirty: true, status: "已清空选区" };
+                return { ...base, data, dirty: true, status: `已清空选区${lockStatus}` };
               })
             }
             onToggleLock={(startRow, startCol, endRow, endCol, locked) =>

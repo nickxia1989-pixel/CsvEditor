@@ -638,6 +638,57 @@ describe("App local directory flow", () => {
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
   });
 
+  it("reports locked cells skipped during paste", async () => {
+    const file = new MockFileHandle("paste-locked.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["paste-locked.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "paste-locked.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+
+    fireEvent.click(screen.getByRole("button", { name: "锁定选区" }));
+    fireEvent.paste(screen.getByRole("grid", { name: "CSV grid" }), {
+      clipboardData: {
+        getData: () => "X\tY"
+      }
+    });
+
+    expect(screen.getByText("已粘贴，跳过锁定 1 个")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("A,Y\n1,2");
+  });
+
+  it("reports locked cells skipped while clearing a selected column", async () => {
+    const file = new MockFileHandle("clear-locked.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["clear-locked.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "clear-locked.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+
+    fireEvent.click(screen.getByRole("button", { name: "锁定选区" }));
+    fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column A" }));
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "Delete" });
+
+    expect(screen.getByText("已清空选区，跳过锁定 1 个")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("A,B\n,2");
+  });
+
   it("clamps the selection after refreshing to a smaller disk version", async () => {
     const file = new MockFileHandle("refresh-shrink.csv", "A,B\n1,2\n3,4");
     const root = new MockDirectoryHandle("Tables", [["refresh-shrink.csv", file]]);
