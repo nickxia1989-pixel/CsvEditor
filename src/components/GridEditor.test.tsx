@@ -213,6 +213,63 @@ describe("GridEditor editing workflow", () => {
     expect(copiedCell).not.toHaveClass("copied");
   });
 
+  it("clears the copied highlight when Delete clears cells", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const copiedCell = screen.getByRole("gridcell", { name: "A1" });
+
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(copiedCell).toHaveClass("copied"));
+
+    fireEvent.keyDown(grid, { key: "Delete" });
+
+    expect(props.onClearRange).toHaveBeenCalledWith(0, 0, 0, 0);
+    expect(copiedCell).not.toHaveClass("copied");
+  });
+
+  it("clears the copied highlight when editing through the formula bar", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const copiedCell = screen.getByRole("gridcell", { name: "A1" });
+
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(copiedCell).toHaveClass("copied"));
+
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "Changed" } });
+
+    expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "Changed");
+    expect(copiedCell).not.toHaveClass("copied");
+  });
+
+  it("clears the copied highlight when a structural edit starts", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const copiedCell = screen.getByRole("gridcell", { name: "A1" });
+
+    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(copiedCell).toHaveClass("copied"));
+
+    fireEvent.click(screen.getByRole("button", { name: "插行" }));
+
+    expect(props.onInsertRows).toHaveBeenCalledWith(0, 0);
+    expect(copiedCell).not.toHaveClass("copied");
+  });
+
   it("blocks cut when the selection contains a locked cell", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -326,6 +383,8 @@ describe("GridEditor toolbar", () => {
       ["X", "X"],
       ["X", "X"]
     ]);
+    expect(screen.getByRole("gridcell", { name: "A2" })).not.toHaveClass("copied");
+    expect(screen.getByRole("gridcell", { name: "B3" })).not.toHaveClass("copied");
   });
 
   it("pastes quoted TSV values from Excel without splitting embedded tabs or newlines", () => {

@@ -326,6 +326,11 @@ export function GridEditor({
     }
   };
 
+  const runAfterClearingCopiedRange = (action: () => void) => {
+    setCopiedRange(null);
+    action();
+  };
+
   const beginEdit = (row = tab.selection.focusRow, col = tab.selection.focusCol, seed?: string) => {
     if (lockedSet.has(cellKey(row, col))) {
       return;
@@ -537,6 +542,7 @@ export function GridEditor({
     }
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
+      setCopiedRange(null);
       onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
       return;
     }
@@ -643,6 +649,7 @@ export function GridEditor({
     }
     event.preventDefault();
     try {
+      setCopiedRange(null);
       onPaste(
         selectionRange.startRow,
         selectionRange.startCol,
@@ -800,7 +807,10 @@ export function GridEditor({
         <span className="cell-name">{selectedLabel}</span>
         <input
           value={selectedValue}
-          onChange={(event) => onSetCell(tab.selection.focusRow, tab.selection.focusCol, event.target.value)}
+          onChange={(event) => {
+            setCopiedRange(null);
+            onSetCell(tab.selection.focusRow, tab.selection.focusCol, event.target.value);
+          }}
           disabled={selectedLocked}
           aria-label="Selected cell value"
         />
@@ -859,26 +869,38 @@ export function GridEditor({
           <Plus size={15} />
         </button>
         <span className="zoom-label">{Math.round(tab.zoom * 100)}%</span>
-        <button className="tool-button" onClick={() => onInsertRows(selectionRange.startRow, selectionRange.endRow)}>
+        <button
+          className="tool-button"
+          onClick={() => runAfterClearingCopiedRange(() => onInsertRows(selectionRange.startRow, selectionRange.endRow))}
+        >
           <Plus size={15} />
           插行
         </button>
-        <button className="tool-button" onClick={() => onDeleteRows(selectionRange.startRow, selectionRange.endRow)}>
+        <button
+          className="tool-button"
+          onClick={() => runAfterClearingCopiedRange(() => onDeleteRows(selectionRange.startRow, selectionRange.endRow))}
+        >
           <Minus size={15} />
           删行
         </button>
-        <button className="tool-button" onClick={() => onInsertColumns(selectionRange.startCol, selectionRange.endCol)}>
+        <button
+          className="tool-button"
+          onClick={() => runAfterClearingCopiedRange(() => onInsertColumns(selectionRange.startCol, selectionRange.endCol))}
+        >
           <Plus size={15} />
           插列
         </button>
-        <button className="tool-button" onClick={() => onDeleteColumns(selectionRange.startCol, selectionRange.endCol)}>
+        <button
+          className="tool-button"
+          onClick={() => runAfterClearingCopiedRange(() => onDeleteColumns(selectionRange.startCol, selectionRange.endCol))}
+        >
           <Minus size={15} />
           删列
         </button>
-        <button className="tool-button" onClick={onAddRow}>
+        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onAddRow)}>
           增行
         </button>
-        <button className="tool-button" onClick={onAddColumn}>
+        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onAddColumn)}>
           增列
         </button>
         <label className="grid-search">
@@ -910,10 +932,10 @@ export function GridEditor({
         <button className="icon-button" onClick={() => runFind("next")} disabled={!findAvailable} title="下一处" aria-label="下一处">
           <ChevronDown size={15} />
         </button>
-        <button className="tool-button" onClick={onReplaceCurrent} disabled={!findAvailable}>
+        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onReplaceCurrent)} disabled={!findAvailable}>
           替换
         </button>
-        <button className="tool-button" onClick={onReplaceAll} disabled={!findAvailable}>
+        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onReplaceAll)} disabled={!findAvailable}>
           全部替换
         </button>
         <button
