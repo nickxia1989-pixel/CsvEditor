@@ -469,6 +469,34 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe("Saved All ID,Name\n1,Alpha");
   });
 
+  it("commits an uncommitted inline editor value before grid structural edits", async () => {
+    const file = new MockFileHandle("inline-structural.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["inline-structural.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "inline-structural.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+    fireEvent.click(screen.getByRole("button", { name: "插行" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe(",\nEdited ID,Name\n1,Alpha");
+  });
+
   it("blocks browser unload for an uncommitted inline editor value", async () => {
     const file = new MockFileHandle("unload-inline.csv", "ID,Name\n1,Alpha");
     const root = new MockDirectoryHandle("Tables", [["unload-inline.csv", file]]);

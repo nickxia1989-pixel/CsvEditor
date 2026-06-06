@@ -370,8 +370,14 @@ export function GridEditor({
     }
   };
 
-  const runAfterClearingCopiedRange = (action: () => void) => {
+  const runAfterCommittingEditAndClearingCopiedRange = (action: () => void) => {
+    commitEditing(false);
     setCopiedRange(null);
+    action();
+  };
+
+  const runAfterCommittingEdit = (action: () => void) => {
+    commitEditing(false);
     action();
   };
 
@@ -906,13 +912,13 @@ export function GridEditor({
         <button
           className="tool-button"
           onClick={() =>
-            onToggleLock(
+            runAfterCommittingEdit(() => onToggleLock(
               selectionRange.startRow,
               selectionRange.startCol,
               selectionRange.endRow,
               selectionRange.endCol,
               !rangeLocked
-            )
+            ))
           }
           title={rangeLocked ? "解除选区锁定" : "锁定选区，防止误改"}
         >
@@ -921,13 +927,13 @@ export function GridEditor({
         </button>
         <button
           className="tool-button"
-          onClick={() => onSetFreeze(tab.selection.focusRow, tab.selection.focusCol)}
+          onClick={() => runAfterCommittingEdit(() => onSetFreeze(tab.selection.focusRow, tab.selection.focusCol))}
           title="冻结到当前格，保持左上区域可见"
         >
           <Rows3 size={15} />
           冻结至当前格
         </button>
-        <button className="tool-button" onClick={() => onSetFreeze(0, 0)} title="取消冻结">
+        <button className="tool-button" onClick={() => runAfterCommittingEdit(() => onSetFreeze(0, 0))} title="取消冻结">
           <Columns3 size={15} />
           取消冻结
         </button>
@@ -950,36 +956,36 @@ export function GridEditor({
         <span className="zoom-label">{Math.round(tab.zoom * 100)}%</span>
         <button
           className="tool-button"
-          onClick={() => runAfterClearingCopiedRange(() => onInsertRows(selectionRange.startRow, selectionRange.endRow))}
+          onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onInsertRows(selectionRange.startRow, selectionRange.endRow))}
         >
           <Plus size={15} />
           插行
         </button>
         <button
           className="tool-button"
-          onClick={() => runAfterClearingCopiedRange(() => onDeleteRows(selectionRange.startRow, selectionRange.endRow))}
+          onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onDeleteRows(selectionRange.startRow, selectionRange.endRow))}
         >
           <Minus size={15} />
           删行
         </button>
         <button
           className="tool-button"
-          onClick={() => runAfterClearingCopiedRange(() => onInsertColumns(selectionRange.startCol, selectionRange.endCol))}
+          onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onInsertColumns(selectionRange.startCol, selectionRange.endCol))}
         >
           <Plus size={15} />
           插列
         </button>
         <button
           className="tool-button"
-          onClick={() => runAfterClearingCopiedRange(() => onDeleteColumns(selectionRange.startCol, selectionRange.endCol))}
+          onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onDeleteColumns(selectionRange.startCol, selectionRange.endCol))}
         >
           <Minus size={15} />
           删列
         </button>
-        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onAddRow)}>
+        <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onAddRow)}>
           增行
         </button>
-        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onAddColumn)}>
+        <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onAddColumn)}>
           增列
         </button>
         <label className="grid-search">
@@ -1011,15 +1017,15 @@ export function GridEditor({
         <button className="icon-button" onClick={() => runFind("next")} disabled={!findAvailable} title="下一处" aria-label="下一处">
           <ChevronDown size={15} />
         </button>
-        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onReplaceCurrent)} disabled={!findAvailable}>
+        <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onReplaceCurrent)} disabled={!findAvailable}>
           替换
         </button>
-        <button className="tool-button" onClick={() => runAfterClearingCopiedRange(onReplaceAll)} disabled={!findAvailable}>
+        <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onReplaceAll)} disabled={!findAvailable}>
           全部替换
         </button>
         <button
           className={`tool-button ${tab.autoRefresh ? "active-toggle" : ""}`}
-          onClick={() => onSetAutoRefresh(!tab.autoRefresh)}
+          onClick={() => runAfterCommittingEdit(() => onSetAutoRefresh(!tab.autoRefresh))}
           title={tab.autoRefresh ? "磁盘变化时自动刷新干净页签" : "暂停自动应用磁盘变化，只标记提示"}
         >
           {tab.autoRefresh ? <Play size={15} /> : <Pause size={15} />}

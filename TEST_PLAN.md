@@ -375,6 +375,16 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, grid measured `931 x 512`, status showed `4 行 / 7 列 | 选区 1 x 1 | 冻结 2 行 / 2 列 | 已打开`, and console error log was empty.
 
+## Verification Run - 2026-06-06 Inline Draft Before Structural Tools
+
+- Structural edit hardening: grid toolbar actions that mutate the sheet now commit an active inline editor before running. This prevents a row/column insert from happening before the draft reaches tab data, which previously could write the edited value into the newly inserted blank row.
+- `npm test -- src/App.test.tsx`: 1 file / 44 tests passed after adding a regression for editing A1, clicking `插行` without manually committing, saving, and preserving both the inserted row and the edited original row.
+- `npm test`: 8 files / 124 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, grid measured `931 x 512`, status showed `4 行 / 7 列 | 选区 1 x 1 | 冻结 2 行 / 2 列 | 已打开`, and console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
