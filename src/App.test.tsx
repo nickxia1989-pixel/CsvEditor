@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { BrowserDirectoryHandle, BrowserFileHandle } from "./lib/fileRefs";
@@ -78,6 +78,97 @@ describe("App local directory flow", () => {
 
     expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
     expect(screen.queryByText(/^热刷新/)).not.toBeInTheDocument();
+  });
+
+  it("auto refreshes a clean tab when the disk version changes", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const file = new MockFileHandle("auto-refresh-clean.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["auto-refresh-clean.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "auto-refresh-clean.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+    const poll = intervalSpy.mock.calls.find((call) => call[1] === 5000)?.[0] as (() => Promise<void>) | undefined;
+    expect(poll).toBeDefined();
+
+    file.externalWrite("REMOTE,B\n1,2");
+    await act(async () => {
+      await poll?.();
+    });
+
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("REMOTE"));
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+  });
+
+  it("marks a clean tab as externally changed when auto refresh is paused", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const file = new MockFileHandle("auto-refresh-paused.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["auto-refresh-paused.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "auto-refresh-paused.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+    fireEvent.click(screen.getByRole("button", { name: "自动热刷" }));
+    expect(screen.getByRole("button", { name: "热刷暂停" })).toBeInTheDocument();
+    const poll = intervalSpy.mock.calls.find((call) => call[1] === 5000)?.[0] as (() => Promise<void>) | undefined;
+    expect(poll).toBeDefined();
+
+    file.externalWrite("REMOTE,B\n1,2");
+    await act(async () => {
+      await poll?.();
+    });
+
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("A");
+    expect(screen.getByText("磁盘版本已变化。当前页签有未保存修改时不会自动覆盖。")).toBeInTheDocument();
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+  });
+
+  it("does not auto refresh over an uncommitted inline edit", async () => {
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const file = new MockFileHandle("auto-refresh-inline.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["auto-refresh-inline.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "auto-refresh-inline.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "INLINE_LOCAL" } });
+    const poll = intervalSpy.mock.calls.find((call) => call[1] === 5000)?.[0] as (() => Promise<void>) | undefined;
+    expect(poll).toBeDefined();
+
+    file.externalWrite("REMOTE,B\n1,2");
+    await act(async () => {
+      await poll?.();
+    });
+
+    expect(editor).toHaveValue("INLINE_LOCAL");
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("A");
+    expect(screen.getByText("磁盘版本已变化。当前页签有未保存修改时不会自动覆盖。")).toBeInTheDocument();
+    expect(screen.getByText("未保存 1")).toBeInTheDocument();
   });
 
   it("resizes the sidebar with a pointer and clamps to bounds", async () => {

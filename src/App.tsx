@@ -85,6 +85,7 @@ export function App() {
   const [activeEditDraftDirty, setActiveEditDraftDirty] = useState(false);
   const tabsRef = useRef(tabs);
   const activeEditDraftDirtyRef = useRef(activeEditDraftDirty);
+  const activeTabIdRef = useRef(activeTabId);
   const tabScrollPositionsRef = useRef<Record<string, GridScrollPosition>>({});
   const pollBusyRef = useRef(false);
   const openingPathsRef = useRef(new Set<string>());
@@ -99,6 +100,10 @@ export function App() {
   useEffect(() => {
     activeEditDraftDirtyRef.current = activeEditDraftDirty;
   }, [activeEditDraftDirty]);
+
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
 
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [activeTabId, tabs]);
   const activeScrollPosition = activeTabId
@@ -468,9 +473,12 @@ export function App() {
           }
           const diskVersion = await tab.fileRef.getVersion();
           if (!versionEquals(tab.version, diskVersion)) {
-            const nextTab = await applyDiskVersionChange(tab, diskVersion);
+            const activeDraftDirtyForSnapshot = activeEditDraftDirtyRef.current && activeTabIdRef.current === tab.id;
+            const shouldApplyDiskVersion = tab.autoRefresh && !tab.dirty && !activeDraftDirtyForSnapshot;
+            const nextTab = shouldApplyDiskVersion ? await applyDiskVersionChange(tab, diskVersion) : null;
             patchTab(tab.id, (current) => {
-              if (current.dirty) {
+              const activeDraftDirtyForCurrent = activeEditDraftDirtyRef.current && activeTabIdRef.current === current.id;
+              if (current.dirty || activeDraftDirtyForCurrent || !current.autoRefresh) {
                 return {
                   ...current,
                   latestDiskVersion: diskVersion,
@@ -479,6 +487,9 @@ export function App() {
                 };
               }
               if (!versionEquals(current.version, tab.version)) {
+                return current;
+              }
+              if (!nextTab) {
                 return current;
               }
               return {
