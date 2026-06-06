@@ -326,8 +326,8 @@
 
 - Keyboard edit hardening: when typing directly into the selected cell starts an inline editor from the hidden keyboard proxy or an IME composition commit, the seeded first character now immediately marks the active tab as an unsaved draft before any second keystroke or explicit commit.
 - `npm test -- src/components/GridEditor.test.tsx`: 1 file / 39 tests passed after asserting keyboard-proxy and IME-seeded editors report draft dirty state immediately.
-- `npm test -- src/App.test.tsx`: 1 file / 38 tests passed after adding an unload-protection regression for a direct keyboard-seeded inline edit.
-- `npm test`: 8 files / 115 tests passed.
+- `npm test -- src/App.test.tsx`: 1 file / 39 tests passed after adding unload-protection coverage for a direct keyboard-seeded inline edit and save-all coverage for an uncommitted inline editor value.
+- `npm test`: 8 files / 116 tests passed.
 - `npm run build`: passed TypeScript checks and Vite production build.
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - `git diff --check`: passed with only Git CRLF conversion warnings.

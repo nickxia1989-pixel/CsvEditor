@@ -349,6 +349,35 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe("Edited ID,Name\n1,Alpha");
   });
 
+  it("saves an uncommitted inline editor value from the save-all button", async () => {
+    const file = new MockFileHandle("save-all-inline.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["save-all-inline.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "save-all-inline.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Saved All ID" } });
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "save-all-inline.csv未保存" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "全部保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("Saved All ID,Name\n1,Alpha");
+  });
+
   it("blocks browser unload for an uncommitted inline editor value", async () => {
     const file = new MockFileHandle("unload-inline.csv", "ID,Name\n1,Alpha");
     const root = new MockDirectoryHandle("Tables", [["unload-inline.csv", file]]);
