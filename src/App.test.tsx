@@ -933,6 +933,39 @@ describe("App local directory flow", () => {
     expect(screen.getByText("未保存 1")).toBeInTheDocument();
   });
 
+  it("protects an uncommitted inline edit when manual refresh is cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const file = new MockFileHandle("refresh-inline-cancel.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["refresh-inline-cancel.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "refresh-inline-cancel.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "INLINE_LOCAL" } });
+    file.externalWrite("REMOTE,B\n1,2");
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith("refresh-inline-cancel.csv 有未保存修改。刷新会丢弃这些修改，是否继续？")
+    );
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("INLINE_LOCAL");
+    expect(screen.getByText("未保存 1")).toBeInTheDocument();
+  });
+
   it("reloads a dirty tab when manual refresh is confirmed", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const file = new MockFileHandle("refresh-confirm.csv", "A,B\n1,2");

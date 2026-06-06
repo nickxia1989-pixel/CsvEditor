@@ -333,6 +333,17 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 
+## Verification Run - 2026-06-06 Copy Visual And Refresh Draft Guard
+
+- Copy-state visual hardening: copied cells now use a light blue fill, a strong inset border, and a dashed inner frame. The focused copied cell keeps the normal focus border while still showing the copied range.
+- Refresh safety coverage: added an App regression for an uncommitted inline cell edit followed by manual refresh. Cancelling the refresh confirmation keeps the local draft visible and preserves the unsaved marker.
+- `npm test -- src/App.test.tsx`: 1 file / 40 tests passed.
+- `npm test`: 8 files / 119 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, grid measured `931 x 512`, loaded CSS contained the new `.grid-cell.copied`, `.grid-cell.copied::after`, and `.grid-cell.copied.focus` rules, and console error log was empty. The current Browser automation blocks native `Ctrl+C`, so actual copied-state activation remains covered by component tests.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
