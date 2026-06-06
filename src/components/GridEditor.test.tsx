@@ -511,6 +511,34 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
   });
 
+  it("moves selection with arrow keys from the grid viewport without browser scrolling", () => {
+    const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+
+    const eventAllowed = fireEvent.keyDown(grid, { key: "ArrowDown" });
+
+    expect(eventAllowed).toBe(false);
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(1, 0));
+  });
+
+  it("opens the selected cell editor with Enter or F2 from the keyboard proxy", () => {
+    const { container, props, rerender } = renderGridWithResult();
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "Enter" });
+    let editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("ID");
+
+    fireEvent.keyDown(editor, { key: "Escape" });
+    rerender(<GridEditor {...props} tab={createTab()} />);
+
+    fireEvent.keyDown(keyProxy, { key: "F2" });
+    editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("ID");
+  });
+
   it("uses Home, End, PageUp, and PageDown for grid navigation", () => {
     const data = Array.from({ length: 30 }, (_, row) => [`A${row}`, `B${row}`, `C${row}`, `D${row}`]);
     const props = renderGrid(createTab({
