@@ -314,6 +314,21 @@ describe("GridEditor toolbar", () => {
     expect(props.onRedo).toHaveBeenCalledTimes(1);
   });
 
+  it("commits an active inline draft before toolbar undo", () => {
+    const { container, props } = renderGridWithResult(createTab({ undoStack: [], redoStack: [] }));
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+
+    const undoButton = screen.getByRole("button", { name: "撤销" });
+    expect(undoButton).toBeEnabled();
+    fireEvent.click(undoButton);
+
+    expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "Edited ID");
+    expect(props.onUndo).toHaveBeenCalledTimes(1);
+  });
+
   it("fires replace toolbar callbacks", () => {
     const props = renderGrid();
 

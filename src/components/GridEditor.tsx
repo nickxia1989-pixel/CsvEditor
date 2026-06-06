@@ -328,6 +328,11 @@ export function GridEditor({
 
   const selectedLabel = `${columnName(tab.selection.focusCol)}${tab.selection.focusRow + 1}`;
   const selectedLocked = lockedSet.has(cellKey(tab.selection.focusRow, tab.selection.focusCol));
+  const editingDirty = Boolean(
+    editing &&
+      !lockedSet.has(cellKey(editing.row, editing.col)) &&
+      editing.value !== readCell(tab.data, editing.row, editing.col)
+  );
   const rangeLocked = rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
   const findAvailable = tab.findQuery.trim().length > 0;
   const realEndRow = Math.max(0, tab.data.length - 1);
@@ -993,10 +998,22 @@ export function GridEditor({
       </div>
 
       <div className="grid-tools">
-        <button className="icon-button" onClick={onUndo} disabled={!canUndo} title="撤销" aria-label="撤销">
+        <button
+          className="icon-button"
+          onClick={() => runAfterCommittingEditAndClearingCopiedRange(onUndo)}
+          disabled={!canUndo && !editingDirty}
+          title="撤销"
+          aria-label="撤销"
+        >
           <Undo2 size={15} />
         </button>
-        <button className="icon-button" onClick={onRedo} disabled={!canRedo} title="重做" aria-label="重做">
+        <button
+          className="icon-button"
+          onClick={() => runAfterCommittingEditAndClearingCopiedRange(onRedo)}
+          disabled={!canRedo}
+          title="重做"
+          aria-label="重做"
+        >
           <Redo2 size={15} />
         </button>
         <button

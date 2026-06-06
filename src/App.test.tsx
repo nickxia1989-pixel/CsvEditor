@@ -481,6 +481,38 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe("Edited ID,Name\nx,Alpha");
   });
 
+  it("undoes an active inline draft from the toolbar without leaving the tab dirty", async () => {
+    const file = new MockFileHandle("undo-inline.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["undo-inline.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "undo-inline.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+
+    const undoButton = screen.getByRole("button", { name: "撤销" });
+    expect(undoButton).toBeEnabled();
+    fireEvent.click(undoButton);
+
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+    expect(file.getText()).toBe("ID,Name\n1,Alpha");
+  });
+
   it("saves an uncommitted inline editor value from the toolbar save button", async () => {
     const file = new MockFileHandle("toolbar-inline-save.csv", "ID,Name\n1,Alpha");
     const root = new MockDirectoryHandle("Tables", [["toolbar-inline-save.csv", file]]);
