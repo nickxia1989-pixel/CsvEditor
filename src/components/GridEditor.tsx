@@ -832,7 +832,12 @@ export function GridEditor({
         onPointerEnter={() => {
           updateDragSelection(row, col);
         }}
-        onDoubleClick={() => beginEdit(row, col)}
+        onDoubleClick={(event) => {
+          if ((event.target as HTMLElement).closest(".cell-editor")) {
+            return;
+          }
+          beginEdit(row, col);
+        }}
         title={locked ? "该格已锁定" : undefined}
       >
         {isEditing ? (
@@ -841,6 +846,7 @@ export function GridEditor({
             value={editing.value}
             autoFocus
             onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
             onChange={(event) => {
               setEditing({ row, col, value: event.target.value });
               onEditDraftDirtyChange(event.target.value !== readCell(tab.data, row, col));

@@ -595,6 +595,20 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).not.toHaveBeenCalled();
   });
 
+  it("keeps the inline editor draft when double-clicking inside the editor", () => {
+    const { container, props } = renderGridWithResult();
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.change(editor, { target: { value: "Draft ID" } });
+
+    fireEvent.doubleClick(editor);
+
+    expect(editor).toHaveValue("Draft ID");
+    expect(props.onSelectionChange).not.toHaveBeenCalled();
+    expect(props.onSetCell).not.toHaveBeenCalled();
+  });
+
   it("commits the inline edit when clicking a different cell", () => {
     const { container, props } = renderGridWithResult();
 
