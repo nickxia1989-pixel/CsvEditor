@@ -354,6 +354,17 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 
+## Verification Run - 2026-06-06 Native Clipboard Event Copy Cut
+
+- Clipboard hardening: grid copy and cut now use the browser `copy` / `cut` event `clipboardData` instead of depending on `navigator.clipboard.writeText` permission. This keeps Ctrl+C/Ctrl+X closer to native spreadsheet behavior and still works when focus is on the hidden keyboard proxy.
+- `npm test -- src/components/GridEditor.test.tsx`: 1 file / 41 tests passed after moving copy/cut regressions to native clipboard events.
+- `npm test`: 8 files / 122 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- `git diff --check`: passed with only Git CRLF conversion warnings.
+- `svn diff --summarize D:\2D_AI_WORKING\Tables\npc.csv` and `svn status D:\2D_AI_WORKING\Tables\npc.csv`: both produced no output in the current working copy, so the previously mentioned local `npc.csv` format-noise diff is not currently present.
+- Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, grid measured `931 x 512`, 350 grid cells rendered, status showed `4 行 / 7 列 | 选区 1 x 1 | 冻结 2 行 / 2 列 | 已打开`, and console error log was empty. The Browser automation environment still blocks native Ctrl+C injection, so actual clipboard-event payload behavior is covered by component tests.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

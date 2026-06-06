@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GridEditor } from "./GridEditor";
 import type { CsvTab } from "../types";
 import { singleCellSelection } from "../types";
@@ -94,32 +94,27 @@ function renderGridWithResult(tab = createTab()) {
   return { ...result, props };
 }
 
-afterEach(() => {
-  Reflect.deleteProperty(navigator, "clipboard");
-});
+function createClipboardData() {
+  return {
+    setData: vi.fn(),
+    getData: vi.fn(() => "")
+  };
+}
 
 describe("GridEditor editing workflow", () => {
   it("copies the selected TSV range and reports copy status", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid();
 
-    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "c", ctrlKey: true });
+    fireEvent.copy(screen.getByRole("grid", { name: "CSV grid" }), { clipboardData });
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ID"));
+    expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", "ID");
     expect(props.onSetStatus).toHaveBeenCalledWith("已复制 1 x 1");
     expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied");
   });
 
   it("copies complex cell values as quoted TSV", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     renderGrid(createTab({
       data: [["A\tinside", "Line 1\nLine 2", 'He said "Hi"']],
       selection: {
@@ -130,47 +125,36 @@ describe("GridEditor editing workflow", () => {
       }
     }));
 
-    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "c", ctrlKey: true });
+    fireEvent.copy(screen.getByRole("grid", { name: "CSV grid" }), { clipboardData });
 
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith('"A\tinside"\t"Line 1\nLine 2"\t"He said ""Hi"""')
-    );
+    expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", '"A\tinside"\t"Line 1\nLine 2"\t"He said ""Hi"""');
   });
 
-  it("reports a copy failure when the browser clipboard API is unavailable", async () => {
+  it("reports a copy failure when clipboard event data is unavailable", async () => {
     const props = renderGrid();
 
-    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "c", ctrlKey: true });
+    fireEvent.copy(screen.getByRole("grid", { name: "CSV grid" }));
 
-    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入"));
+    expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入");
   });
 
   it("clears the previous copied highlight when a new copy fails", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
     const copiedCell = screen.getByRole("gridcell", { name: "A1" });
 
-    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    fireEvent.copy(grid, { clipboardData });
     await waitFor(() => expect(copiedCell).toHaveClass("copied"));
 
-    Reflect.deleteProperty(navigator, "clipboard");
-    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    fireEvent.copy(grid);
 
-    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入"));
+    expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入");
     expect(copiedCell).not.toHaveClass("copied");
   });
 
   it("cuts the selected TSV range only after clipboard write succeeds", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid(createTab({
       selection: {
         anchorRow: 2,
@@ -180,9 +164,9 @@ describe("GridEditor editing workflow", () => {
       }
     }));
 
-    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "x", ctrlKey: true });
+    fireEvent.cut(screen.getByRole("grid", { name: "CSV grid" }), { clipboardData });
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("1001\tTraining Slime\n1002\tForest Wolf"));
+    expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", "1001\tTraining Slime\n1002\tForest Wolf");
     expect(props.onClearRange).toHaveBeenCalledWith(1, 0, 2, 1);
     expect(props.onSetStatus).toHaveBeenCalledWith("已剪切 2 x 2");
   });
@@ -190,44 +174,35 @@ describe("GridEditor editing workflow", () => {
   it("does not clear the selected range when cut clipboard write fails", async () => {
     const props = renderGrid();
 
-    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "x", ctrlKey: true });
+    fireEvent.cut(screen.getByRole("grid", { name: "CSV grid" }));
 
-    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("剪切失败：浏览器未允许剪贴板写入"));
+    expect(props.onSetStatus).toHaveBeenCalledWith("剪切失败：浏览器未允许剪贴板写入");
     expect(props.onClearRange).not.toHaveBeenCalled();
   });
 
   it("clears the previous copied highlight when a cut attempt fails", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
     const copiedCell = screen.getByRole("gridcell", { name: "A1" });
 
-    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    fireEvent.copy(grid, { clipboardData });
     await waitFor(() => expect(copiedCell).toHaveClass("copied"));
 
-    Reflect.deleteProperty(navigator, "clipboard");
-    fireEvent.keyDown(grid, { key: "x", ctrlKey: true });
+    fireEvent.cut(grid);
 
-    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("剪切失败：浏览器未允许剪贴板写入"));
+    expect(props.onSetStatus).toHaveBeenCalledWith("剪切失败：浏览器未允许剪贴板写入");
     expect(props.onClearRange).not.toHaveBeenCalled();
     expect(copiedCell).not.toHaveClass("copied");
   });
 
   it("clears the copied highlight when Delete clears cells", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
     const copiedCell = screen.getByRole("gridcell", { name: "A1" });
 
-    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    fireEvent.copy(grid, { clipboardData });
     await waitFor(() => expect(copiedCell).toHaveClass("copied"));
 
     fireEvent.keyDown(grid, { key: "Delete" });
@@ -237,16 +212,12 @@ describe("GridEditor editing workflow", () => {
   });
 
   it("clears the copied highlight when editing through the formula bar", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
     const copiedCell = screen.getByRole("gridcell", { name: "A1" });
 
-    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    fireEvent.copy(grid, { clipboardData });
     await waitFor(() => expect(copiedCell).toHaveClass("copied"));
 
     fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "Changed" } });
@@ -256,16 +227,12 @@ describe("GridEditor editing workflow", () => {
   });
 
   it("clears the copied highlight when a structural edit starts", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
     const copiedCell = screen.getByRole("gridcell", { name: "A1" });
 
-    fireEvent.keyDown(grid, { key: "c", ctrlKey: true });
+    fireEvent.copy(grid, { clipboardData });
     await waitFor(() => expect(copiedCell).toHaveClass("copied"));
 
     fireEvent.click(screen.getByRole("button", { name: "插行" }));
@@ -275,18 +242,14 @@ describe("GridEditor editing workflow", () => {
   });
 
   it("blocks cut when the selection contains a locked cell", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid(createTab({
       lockedCells: ["0:0"]
     }));
 
-    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "x", ctrlKey: true });
+    fireEvent.cut(screen.getByRole("grid", { name: "CSV grid" }), { clipboardData });
 
-    expect(writeText).not.toHaveBeenCalled();
+    expect(clipboardData.setData).not.toHaveBeenCalled();
     expect(props.onClearRange).not.toHaveBeenCalled();
     expect(props.onSetStatus).toHaveBeenCalledWith("选区包含锁定格，不能剪切");
   });
@@ -404,11 +367,7 @@ describe("GridEditor toolbar", () => {
   });
 
   it("copies and pastes through the keyboard proxy when it owns focus", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid(createTab({
       selection: {
         anchorRow: 2,
@@ -419,9 +378,9 @@ describe("GridEditor toolbar", () => {
     }));
     const keyProxy = screen.getByLabelText("Grid keyboard input");
 
-    fireEvent.keyDown(keyProxy, { key: "c", ctrlKey: true });
+    fireEvent.copy(keyProxy, { clipboardData });
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("1001\tTraining Slime\n1002\tForest Wolf"));
+    expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", "1001\tTraining Slime\n1002\tForest Wolf");
     expect(screen.getByRole("gridcell", { name: "A2" })).toHaveClass("copied");
     expect(screen.getByRole("gridcell", { name: "B3" })).toHaveClass("copied");
 
@@ -438,17 +397,13 @@ describe("GridEditor toolbar", () => {
   });
 
   it("cuts through the keyboard proxy when it owns focus", async () => {
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
+    const clipboardData = createClipboardData();
     const props = renderGrid();
     const keyProxy = screen.getByLabelText("Grid keyboard input");
 
-    fireEvent.keyDown(keyProxy, { key: "x", ctrlKey: true });
+    fireEvent.cut(keyProxy, { clipboardData });
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ID"));
+    expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", "ID");
     expect(props.onClearRange).toHaveBeenCalledWith(0, 0, 0, 0);
     expect(props.onSetStatus).toHaveBeenCalledWith("已剪切 1 x 1");
   });

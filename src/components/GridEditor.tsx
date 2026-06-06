@@ -533,57 +533,7 @@ export function GridEditor({
       return;
     }
 
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
-      event.preventDefault();
-      setCopiedRange(null);
-      if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
-        onSetStatus("选区包含锁定格，不能剪切");
-        return;
-      }
-      const text = matrixToTsv(
-        tab.data,
-        selectionRange.startRow,
-        selectionRange.startCol,
-        selectionRange.endRow,
-        selectionRange.endCol
-      );
-      try {
-        if (!navigator.clipboard?.writeText) {
-          throw new Error("Clipboard API unavailable");
-        }
-        await navigator.clipboard.writeText(text);
-        onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
-        onSetStatus(`已剪切 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
-      } catch {
-        onSetStatus("剪切失败：浏览器未允许剪贴板写入");
-      }
-      return;
-    }
-
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
-      event.preventDefault();
-      setCopiedRange(null);
-      const text = matrixToTsv(
-        tab.data,
-        selectionRange.startRow,
-        selectionRange.startCol,
-        selectionRange.endRow,
-        selectionRange.endCol
-      );
-      try {
-        if (!navigator.clipboard?.writeText) {
-          throw new Error("Clipboard API unavailable");
-        }
-        await navigator.clipboard.writeText(text);
-        setCopiedRange(selectionRange);
-        onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
-      } catch {
-        onSetStatus("复制失败：浏览器未允许剪贴板写入");
-      }
-      return;
-    }
-
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
+    if ((event.ctrlKey || event.metaKey) && ["c", "x", "v"].includes(event.key.toLowerCase())) {
       return;
     }
 
@@ -719,6 +669,60 @@ export function GridEditor({
       );
     } catch (error) {
       onSetStatus(error instanceof Error ? error.message : "粘贴内容解析失败");
+    }
+  };
+
+  const handleCopy = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    if (editing) {
+      return;
+    }
+    event.preventDefault();
+    setCopiedRange(null);
+    const text = matrixToTsv(
+      tab.data,
+      selectionRange.startRow,
+      selectionRange.startCol,
+      selectionRange.endRow,
+      selectionRange.endCol
+    );
+    try {
+      if (!event.clipboardData) {
+        throw new Error("Clipboard event data unavailable");
+      }
+      event.clipboardData.setData("text/plain", text);
+      setCopiedRange(selectionRange);
+      onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
+    } catch {
+      onSetStatus("复制失败：浏览器未允许剪贴板写入");
+    }
+  };
+
+  const handleCut = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    if (editing) {
+      return;
+    }
+    event.preventDefault();
+    setCopiedRange(null);
+    if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
+      onSetStatus("选区包含锁定格，不能剪切");
+      return;
+    }
+    const text = matrixToTsv(
+      tab.data,
+      selectionRange.startRow,
+      selectionRange.startCol,
+      selectionRange.endRow,
+      selectionRange.endCol
+    );
+    try {
+      if (!event.clipboardData) {
+        throw new Error("Clipboard event data unavailable");
+      }
+      event.clipboardData.setData("text/plain", text);
+      onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+      onSetStatus(`已剪切 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
+    } catch {
+      onSetStatus("剪切失败：浏览器未允许剪贴板写入");
     }
   };
 
@@ -1025,6 +1029,8 @@ export function GridEditor({
         tabIndex={0}
         onKeyDown={handleGridKeyDown}
         onBeforeInput={handleGridBeforeInput}
+        onCopy={handleCopy}
+        onCut={handleCut}
         onPaste={handlePaste}
         onPointerMove={(event) => {
           if (dragging) {
