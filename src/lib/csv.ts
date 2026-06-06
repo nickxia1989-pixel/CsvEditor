@@ -17,9 +17,7 @@ export type CsvSourceRow = {
 };
 
 export function detectNewline(text: string): string {
-  const crlf = (text.match(/\r\n/g) ?? []).length;
-  const lf = (text.match(/(?<!\r)\n/g) ?? []).length;
-  return crlf >= lf ? "\r\n" : "\n";
+  return pickNewline(countCsvNewlines(text, true)) ?? pickNewline(countCsvNewlines(text, false)) ?? "\r\n";
 }
 
 export function parseCsvText(text: string): ParsedCsv {
@@ -250,6 +248,46 @@ function splitCsvRecords(text: string): string[] {
     rows.push(text.slice(start));
   }
   return rows;
+}
+
+function countCsvNewlines(text: string, outsideQuotesOnly: boolean): { crlf: number; lf: number; cr: number } {
+  const counts = { crlf: 0, lf: 0, cr: 0 };
+  let inQuotes = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '"') {
+      if (inQuotes && text[index + 1] === '"') {
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (outsideQuotesOnly && inQuotes) {
+      continue;
+    }
+    if (char === "\r") {
+      if (text[index + 1] === "\n") {
+        counts.crlf += 1;
+        index += 1;
+      } else {
+        counts.cr += 1;
+      }
+    } else if (char === "\n") {
+      counts.lf += 1;
+    }
+  }
+  return counts;
+}
+
+function pickNewline(counts: { crlf: number; lf: number; cr: number }): string | null {
+  if (counts.crlf === 0 && counts.lf === 0 && counts.cr === 0) {
+    return null;
+  }
+  if (counts.crlf >= counts.lf && counts.crlf >= counts.cr) {
+    return "\r\n";
+  }
+  return counts.lf >= counts.cr ? "\n" : "\r";
 }
 
 function splitCsvFields(row: string, delimiter: string): string[] {

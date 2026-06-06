@@ -22,6 +22,38 @@ describe("csv helpers", () => {
     ]);
   });
 
+  it("detects row separators outside quoted multiline fields", () => {
+    const parsed = parseCsvText('"Line 1\r\nLine 2\r\nLine 3",Desc\n1,Original\n');
+    const next = parsed.data.map((row) => [...row]);
+    next[1][1] = "Changed";
+
+    expect(parsed.newline).toBe("\n");
+    expect(unparseCsvData(
+      next,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe('"Line 1\r\nLine 2\r\nLine 3",Desc\n1,Changed\n');
+  });
+
+  it("keeps CRLF row separators when quoted fields contain more LF newlines", () => {
+    const parsed = parseCsvText('ID,Notes\r\n1,"a\nb\nc\nd"\r\n');
+    const next = parsed.data.map((row) => [...row]);
+    next[0][0] = "Key";
+
+    expect(parsed.newline).toBe("\r\n");
+    expect(unparseCsvData(
+      next,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe('Key,Notes\r\n1,"a\nb\nc\nd"\r\n');
+  });
+
   it("expands sparse writes without mutating the original matrix", () => {
     const original = [["A"]];
     const next = writeCell(original, 2, 2, "Z");
