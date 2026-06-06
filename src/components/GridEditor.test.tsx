@@ -273,6 +273,22 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(2, 1));
   });
 
+  it("uses the active inline draft when finding the next match", () => {
+    const { container, props } = renderGridWithResult(createTab({
+      data: [["ID", "Name"], ["1001", "Training Slime"]],
+      selection: singleCellSelection(0, 0),
+      findQuery: "wolf"
+    }));
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "B1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    fireEvent.change(editor, { target: { value: "Forest Wolf" } });
+    fireEvent.click(screen.getByRole("button", { name: "下一处" }));
+
+    expect(props.onSetCell).toHaveBeenCalledWith(0, 1, "Forest Wolf");
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
+  });
+
   it("toggles auto refresh for the active tab", () => {
     const props = renderGrid();
     fireEvent.click(screen.getByRole("button", { name: "自动热刷" }));

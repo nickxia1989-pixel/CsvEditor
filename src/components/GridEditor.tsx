@@ -19,7 +19,8 @@ import {
   maxColumnCount,
   matrixToTsv,
   parseTsv,
-  readCell
+  readCell,
+  writeCell
 } from "../lib/csv";
 import type { CsvMatrix, CsvSelection, CsvTab, GridScrollPosition } from "../types";
 import { cellKey, normalizeSelection, singleCellSelection } from "../types";
@@ -503,8 +504,14 @@ export function GridEditor({
 
   const pageRowDelta = Math.max(1, Math.floor(Math.max(rowHeight, (viewport.height || 500) - headerHeight) / rowHeight));
 
+  const dataWithEditingDraft = () =>
+    editing && !lockedSet.has(cellKey(editing.row, editing.col))
+      ? writeCell(tab.data, editing.row, editing.col, editing.value)
+      : tab.data;
+
   const runFind = (direction: "next" | "previous") => {
-    const result = findCell(tab.data, tab.findQuery, tab.selection.focusRow, tab.selection.focusCol, direction);
+    const result = findCell(dataWithEditingDraft(), tab.findQuery, tab.selection.focusRow, tab.selection.focusCol, direction);
+    commitEditing(false);
     if (result) {
       onSelectionChange(singleCellSelection(result.row, result.col));
     }
