@@ -441,6 +441,41 @@ describe("GridEditor toolbar", () => {
     ]);
   });
 
+  it("falls back to an internal copy when Ctrl+C does not emit a native copy event", async () => {
+    const props = renderGrid();
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "c", ctrlKey: true });
+
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied"));
+    expect(props.onSetStatus).toHaveBeenCalledWith("已复制 1 x 1（仅编辑器内可粘贴）");
+  });
+
+  it("falls back to internal paste when Ctrl+V does not emit a native paste event", async () => {
+    const { props, rerender } = renderGridWithResult(createTab({ selection: singleCellSelection(0, 0) }));
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "c", ctrlKey: true });
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied"));
+
+    const targetSelection = {
+      anchorRow: 2,
+      anchorCol: 1,
+      focusRow: 1,
+      focusCol: 0
+    };
+    rerender(<GridEditor {...props} tab={createTab({ selection: targetSelection })} />);
+
+    fireEvent.keyDown(keyProxy, { key: "v", ctrlKey: true });
+
+    await waitFor(() =>
+      expect(props.onPaste).toHaveBeenCalledWith(1, 0, [
+        ["ID", "ID"],
+        ["ID", "ID"]
+      ])
+    );
+  });
+
   it("cuts through the keyboard proxy when it owns focus", async () => {
     const clipboardData = createClipboardData();
     const props = renderGrid();

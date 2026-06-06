@@ -130,6 +130,7 @@ export function GridEditor({
   } | null>(null);
   const [copiedRange, setCopiedRange] = useState<ReturnType<typeof normalizeSelection> | null>(null);
   const copiedTextRef = useRef<string | null>(null);
+  const clipboardEventSerialRef = useRef(0);
 
   const selectionRange = normalizeSelection(tab.selection);
   const selectedValue = readCell(tab.data, tab.selection.focusRow, tab.selection.focusCol);
@@ -347,6 +348,10 @@ export function GridEditor({
     setCopiedRange(null);
   };
 
+  const markClipboardEventHandled = () => {
+    clipboardEventSerialRef.current += 1;
+  };
+
   useEffect(() => {
     setEditing(null);
     setResizeState(null);
@@ -535,6 +540,58 @@ export function GridEditor({
       ? writeCell(tab.data, editing.row, editing.col, editing.value)
       : tab.data;
 
+  const copySelectionToInternalBuffer = (statusSuffix = "") => {
+    const text = matrixToTsv(
+      tab.data,
+      selectionRange.startRow,
+      selectionRange.startCol,
+      selectionRange.endRow,
+      selectionRange.endCol
+    );
+    copiedTextRef.current = text;
+    setCopiedRange(selectionRange);
+    onSetStatus(
+      `已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}${statusSuffix}`
+    );
+    return text;
+  };
+
+  const pasteTextIntoSelection = (text: string) => {
+    if (!text) {
+      return;
+    }
+    try {
+      clearCopiedState();
+      onPaste(
+        selectionRange.startRow,
+        selectionRange.startCol,
+        expandPasteValues(
+          parseTsv(text),
+          selectionRange.endRow - selectionRange.startRow + 1,
+          selectionRange.endCol - selectionRange.startCol + 1
+        )
+      );
+    } catch (error) {
+      onSetStatus(error instanceof Error ? error.message : "粘贴内容解析失败");
+    }
+  };
+
+  const scheduleKeyboardClipboardFallback = (type: "copy" | "paste") => {
+    const serial = clipboardEventSerialRef.current;
+    window.setTimeout(() => {
+      if (clipboardEventSerialRef.current !== serial) {
+        return;
+      }
+      if (type === "copy") {
+        copySelectionToInternalBuffer("（仅编辑器内可粘贴）");
+        return;
+      }
+      if (copiedRange && copiedTextRef.current) {
+        pasteTextIntoSelection(copiedTextRef.current);
+      }
+    }, 0);
+  };
+
   const runFind = (direction: "next" | "previous") => {
     const result = findCell(dataWithEditingDraft(), tab.findQuery, tab.selection.focusRow, tab.selection.focusCol, direction);
     commitEditing(false);
@@ -572,7 +629,17 @@ export function GridEditor({
       return;
     }
 
-    if ((event.ctrlKey || event.metaKey) && ["c", "x", "v"].includes(event.key.toLowerCase())) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
+      scheduleKeyboardClipboardFallback("copy");
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
+      scheduleKeyboardClipboardFallback("paste");
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
       return;
     }
 
@@ -690,50 +757,32 @@ export function GridEditor({
     if (editing) {
       return;
     }
+    markClipboardEventHandled();
     const clipboardText = event.clipboardData?.getData("text/plain") ?? "";
     const text = clipboardText || (copiedRange ? copiedTextRef.current ?? "" : "");
     if (!text) {
       return;
     }
     event.preventDefault();
-    try {
-      clearCopiedState();
-      onPaste(
-        selectionRange.startRow,
-        selectionRange.startCol,
-        expandPasteValues(
-          parseTsv(text),
-          selectionRange.endRow - selectionRange.startRow + 1,
-          selectionRange.endCol - selectionRange.startCol + 1
-        )
-      );
-    } catch (error) {
-      onSetStatus(error instanceof Error ? error.message : "粘贴内容解析失败");
-    }
+    pasteTextIntoSelection(text);
   };
 
   const handleCopy = (event: React.ClipboardEvent<HTMLDivElement>) => {
     if (editing) {
       return;
     }
+    markClipboardEventHandled();
     event.preventDefault();
-    const text = matrixToTsv(
-      tab.data,
-      selectionRange.startRow,
-      selectionRange.startCol,
-      selectionRange.endRow,
-      selectionRange.endCol
-    );
-    copiedTextRef.current = text;
-    setCopiedRange(selectionRange);
+    const text = copySelectionToInternalBuffer();
     try {
       if (!event.clipboardData) {
         throw new Error("Clipboard event data unavailable");
       }
       event.clipboardData.setData("text/plain", text);
-      onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
     } catch {
-      onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}（仅编辑器内可粘贴）`);
+      onSetStatus(
+        `已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}（仅编辑器内可粘贴）`
+      );
     }
   };
 
@@ -741,6 +790,7 @@ export function GridEditor({
     if (editing) {
       return;
     }
+    markClipboardEventHandled();
     event.preventDefault();
     clearCopiedState();
     if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
