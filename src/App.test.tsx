@@ -378,6 +378,34 @@ describe("App local directory flow", () => {
     expect(unloadEvent.defaultPrevented).toBe(true);
   });
 
+  it("marks direct keyboard seeded inline edits as dirty before commit", async () => {
+    const file = new MockFileHandle("keyboard-seed.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["keyboard-seed.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "keyboard-seed.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A1" }));
+    fireEvent.change(screen.getByLabelText("Grid keyboard input"), { target: { value: "K" } });
+
+    await waitFor(() => {
+      expect(container.querySelector(".cell-editor")).toHaveValue("K");
+      expect(screen.getByRole("tab", { name: "keyboard-seed.csv未保存" })).toBeInTheDocument();
+    });
+
+    const unloadEvent = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    window.dispatchEvent(unloadEvent);
+
+    expect(unloadEvent.defaultPrevented).toBe(true);
+  });
+
   it("preserves raw field formatting when editing a virtual new column", async () => {
     const original = '34,"keep,comma",测试lilifute \r\n35,伊莉亚,测试\r\n';
     const file = new MockFileHandle("virtual-column-format.csv", original);

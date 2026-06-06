@@ -385,11 +385,13 @@ export function GridEditor({
       return;
     }
     setCopiedRange(null);
-    onEditDraftDirtyChange(false);
+    const currentValue = readCell(tab.data, row, col);
+    const nextValue = seed ?? currentValue;
+    onEditDraftDirtyChange(nextValue !== currentValue);
     setEditing({
       row,
       col,
-      value: seed ?? readCell(tab.data, row, col)
+      value: nextValue
     });
   };
 

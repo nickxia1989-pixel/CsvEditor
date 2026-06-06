@@ -571,7 +571,7 @@ describe("GridEditor toolbar", () => {
   });
 
   it("lets the keyboard proxy input event seed text editing instead of printable keydown", () => {
-    const { container } = renderGridWithResult();
+    const { container, props } = renderGridWithResult();
     const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;
 
     fireEvent.keyDown(keyProxy, { key: "n" });
@@ -582,10 +582,11 @@ describe("GridEditor toolbar", () => {
     const editor = container.querySelector(".cell-editor") as HTMLInputElement;
     expect(editor).toBeInTheDocument();
     expect(editor).toHaveValue("n");
+    expect(props.onEditDraftDirtyChange).toHaveBeenLastCalledWith(true);
   });
 
   it("opens editing from an IME composition committed through the keyboard proxy", () => {
-    const { container } = renderGridWithResult();
+    const { container, props } = renderGridWithResult();
     const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;
 
     fireEvent.compositionStart(keyProxy);
@@ -598,6 +599,7 @@ describe("GridEditor toolbar", () => {
     const editor = container.querySelector(".cell-editor") as HTMLInputElement;
     expect(editor).toBeInTheDocument();
     expect(editor).toHaveValue("你");
+    expect(props.onEditDraftDirtyChange).toHaveBeenLastCalledWith(true);
   });
 
   it("lets the inline editor handle pointer selection without changing the grid selection", () => {
