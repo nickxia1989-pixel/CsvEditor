@@ -350,11 +350,20 @@ export function GridEditor({
     setDragging(false);
   }, [onEditDraftDirtyChange, tab.id]);
 
+  const resetKeyProxyValue = () => {
+    if (keyProxyRef.current) {
+      keyProxyRef.current.value = "";
+    }
+  };
+
+  const focusGridInput = () => {
+    resetKeyProxyValue();
+    const target = keyProxyRef.current ?? viewportRef.current;
+    target?.focus({ preventScroll: true });
+  };
+
   const focusGridInputSoon = () => {
-    window.requestAnimationFrame(() => {
-      const target = keyProxyRef.current ?? viewportRef.current;
-      target?.focus({ preventScroll: true });
-    });
+    window.requestAnimationFrame(focusGridInput);
   };
 
   const commitEditing = (refocusGrid = false) => {
@@ -366,6 +375,8 @@ export function GridEditor({
     }
     setEditing(null);
     onEditDraftDirtyChange(false);
+    composingInputRef.current = false;
+    resetKeyProxyValue();
     if (refocusGrid) {
       focusGridInputSoon();
     }
@@ -392,6 +403,8 @@ export function GridEditor({
       return;
     }
     setCopiedRange(null);
+    composingInputRef.current = false;
+    resetKeyProxyValue();
     const currentValue = readCell(tab.data, row, col);
     const nextValue = seed ?? currentValue;
     onEditDraftDirtyChange(nextValue !== currentValue);
@@ -423,6 +436,13 @@ export function GridEditor({
     composingInputRef.current = false;
     beginEditFromKeyboardText(event.currentTarget.value || event.data);
   };
+
+  useEffect(() => {
+    if (!editing) {
+      resetKeyProxyValue();
+      composingInputRef.current = false;
+    }
+  }, [editing, tab.selection.anchorCol, tab.selection.anchorRow, tab.selection.focusCol, tab.selection.focusRow]);
 
   useEffect(() => {
     const handleCommitActiveEdit = () => commitEditing(false);
@@ -756,7 +776,7 @@ export function GridEditor({
         commitEditing(false);
         suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: realEndRow, anchorCol: col, focusRow: 0, focusCol: col });
-        focusGridInputSoon();
+        focusGridInput();
       }}
     >
       {columnName(col)}
@@ -792,7 +812,7 @@ export function GridEditor({
         commitEditing(false);
         suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
-        focusGridInputSoon();
+        focusGridInput();
       }}
     >
       {row + 1}
@@ -840,7 +860,7 @@ export function GridEditor({
           dragAnchorRef.current = { row, col };
           setDragging(true);
           onSelectionChange(singleCellSelection(row, col));
-          focusGridInputSoon();
+          focusGridInput();
         }}
         onPointerEnter={() => {
           updateDragSelection(row, col);
@@ -858,7 +878,11 @@ export function GridEditor({
             className="cell-editor"
             value={editing.value}
             autoFocus
-            onPointerDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              dragAnchorRef.current = null;
+              setDragging(false);
+            }}
             onDoubleClick={(event) => event.stopPropagation()}
             onChange={(event) => {
               setEditing({ row, col, value: event.target.value });
@@ -878,6 +902,8 @@ export function GridEditor({
                 event.preventDefault();
                 setEditing(null);
                 onEditDraftDirtyChange(false);
+                resetKeyProxyValue();
+                composingInputRef.current = false;
                 focusGridInputSoon();
               } else if (event.key === "Tab") {
                 event.preventDefault();
@@ -1046,6 +1072,11 @@ export function GridEditor({
         aria-label="CSV grid"
         ref={viewportRef}
         tabIndex={0}
+        onFocus={(event) => {
+          if (!editing && event.target === viewportRef.current) {
+            focusGridInputSoon();
+          }
+        }}
         onKeyDown={handleGridKeyDown}
         onBeforeInput={handleGridBeforeInput}
         onCopy={handleCopy}
@@ -1116,7 +1147,7 @@ export function GridEditor({
               suppressNextSelectionScrollRef.current = true;
               onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
               onSetStatus("已全选已用区域");
-              focusGridInputSoon();
+              focusGridInput();
             }}
           />
           {frozenCols.map((col) => renderColumnHeader(col, "freeze-corner", "frozen-row frozen-col"))}

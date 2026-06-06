@@ -482,6 +482,15 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
   });
 
+  it("focuses the keyboard proxy immediately when selecting a cell", () => {
+    renderGrid();
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }));
+
+    expect(document.activeElement).toBe(keyProxy);
+  });
+
   it("moves selection with arrow keys from the grid viewport without browser scrolling", () => {
     const props = renderGrid();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
@@ -599,6 +608,26 @@ describe("GridEditor toolbar", () => {
     expect(editor).toBeInTheDocument();
     expect(editor).toHaveValue("你");
     expect(props.onEditDraftDirtyChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("clears stale keyboard proxy text before an IME composition starts", () => {
+    const { container } = renderGridWithResult();
+    const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;
+    keyProxy.value = "stale";
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }));
+    expect(keyProxy).toHaveValue("");
+
+    fireEvent.compositionStart(keyProxy);
+    fireEvent.change(keyProxy, { target: { value: "zhong" } });
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+
+    keyProxy.value = "中";
+    fireEvent.compositionEnd(keyProxy, { data: "中" });
+
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("中");
   });
 
   it("lets the inline editor handle pointer selection without changing the grid selection", () => {

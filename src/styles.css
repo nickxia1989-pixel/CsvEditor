@@ -764,6 +764,7 @@ button:disabled {
   outline: 0;
   background: #fff;
   color: #172026;
+  user-select: text;
 }
 
 .grid-status {

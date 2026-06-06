@@ -395,6 +395,19 @@
 - `git diff --check`: passed with only Git CRLF conversion warnings.
 - Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, find controls were present, grid measured `931 x 512`, status showed `4 行 / 7 列 | 选区 1 x 1 | 冻结 2 行 / 2 列 | 已打开`, and console error log was empty.
 
+## Verification Run - 2026-06-06 Keyboard Proxy and Legacy Encoding
+
+- Keyboard hardening: cell/header/corner selections now focus and clear the hidden keyboard proxy immediately, selection changes clear stale proxy text, and inline-editor pointer use cancels any leftover grid drag state. This targets Enter-not-opening, arrow-key browser scrolling, IME first-letter loss, and text selection inside inline editors.
+- Encoding hardening: saves now preserve the tab's decoded encoding. UTF-8 writes still use strings; GB18030 writes use a byte buffer generated from a safe reverse map and fail loudly for characters that cannot be encoded instead of silently converting the whole file to UTF-8.
+- `npm test -- src/components/GridEditor.test.tsx`: 1 file / 45 tests passed after adding proxy focus and stale IME proxy regressions.
+- `npm test -- src/App.test.tsx`: 1 file / 46 tests passed after adding end-to-end Enter-then-type and GB18030-save regressions.
+- `npm test -- src/lib/textDecode.test.ts src/lib/fileRefs.test.ts`: 2 files / 9 tests passed.
+- `npm test`: 8 files / 131 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- Read-only `svn diff "D:\2D_AI_WORKING\Tables\npc.csv"` produced no output during this run. Byte inspection showed UTF-8 BOM, CRLF row separators, and no UTF-8 replacement characters, so the currently visible local file did not show an active SVN diff corruption at the time of testing.
+- Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, selecting A1 focused `Grid keyboard input`, ArrowRight moved the selection to B1 with scroll still at 0/0, double-click editing B2 then Enter moved to B3, direct typing opened a B3 editor with `x`, grid measured `948 x 529`, and console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

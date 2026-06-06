@@ -5,20 +5,21 @@ import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion } 
 class MockFileHandle implements BrowserFileHandle {
   kind = "file" as const;
   name = "mock.csv";
-  private text: string;
+  private bytes: Uint8Array;
   private modified = 1;
 
-  constructor(text: string) {
-    this.text = text;
+  constructor(data: string | Uint8Array) {
+    this.bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
   }
 
   async getFile(): Promise<File> {
+    const bytes = new Uint8Array(this.bytes);
     return {
       name: this.name,
       lastModified: this.modified,
-      size: new Blob([this.text]).size,
-      text: async () => this.text,
-      arrayBuffer: async () => new TextEncoder().encode(this.text).buffer
+      size: bytes.byteLength,
+      text: async () => new TextDecoder().decode(bytes),
+      arrayBuffer: async () => bytes.buffer
     } as File;
   }
 
@@ -28,16 +29,16 @@ class MockFileHandle implements BrowserFileHandle {
 
   async createWritable() {
     return {
-      write: async (text: string) => {
-        this.text = text;
+      write: async (data: string | Uint8Array) => {
+        this.bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
         this.modified += 1;
       },
       close: async () => undefined
     };
   }
 
-  externalWrite(text: string) {
-    this.text = text;
+  externalWrite(data: string | Uint8Array) {
+    this.bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
     this.modified += 1;
   }
 }

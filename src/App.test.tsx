@@ -6,21 +6,21 @@ import type { BrowserDirectoryHandle, BrowserFileHandle } from "./lib/fileRefs";
 class MockFileHandle implements BrowserFileHandle {
   kind = "file" as const;
   name: string;
-  private text: string;
+  private bytes: Uint8Array;
   private modified = 1;
 
-  constructor(name: string, text: string) {
+  constructor(name: string, data: string | Uint8Array) {
     this.name = name;
-    this.text = text;
+    this.bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
   }
 
   async getFile(): Promise<File> {
-    const encoded = new TextEncoder().encode(this.text);
+    const bytes = new Uint8Array(this.bytes);
     return {
       name: this.name,
       lastModified: this.modified,
-      size: encoded.byteLength,
-      arrayBuffer: async () => encoded.buffer
+      size: bytes.byteLength,
+      arrayBuffer: async () => bytes.buffer
     } as File;
   }
 
@@ -30,20 +30,24 @@ class MockFileHandle implements BrowserFileHandle {
 
   async createWritable() {
     return {
-      write: async (text: string) => {
-        this.text = text;
+      write: async (data: string | Uint8Array) => {
+        this.bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
         this.modified += 1;
       },
       close: async () => undefined
     };
   }
 
-  getText(): string {
-    return this.text;
+  getText(encoding = "utf-8"): string {
+    return new TextDecoder(encoding).decode(this.bytes);
   }
 
-  externalWrite(text: string): void {
-    this.text = text;
+  getBytes(): Uint8Array {
+    return new Uint8Array(this.bytes);
+  }
+
+  externalWrite(data: string | Uint8Array): void {
+    this.bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
     this.modified += 1;
   }
 }
@@ -381,6 +385,36 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe('340,测试lilifute ,测试\r\n""\r\n35,伊莉亚,测试\r\n');
   });
 
+  it("preserves GB18030 bytes when saving a legacy encoded CSV", async () => {
+    const original = new Uint8Array([
+      0x49, 0x44, 0x2c, 0x4e, 0x61, 0x6d, 0x65, 0x0d, 0x0a,
+      0x31, 0x2c, 0xd6, 0xd0, 0xce, 0xc4, 0x0d, 0x0a
+    ]);
+    const file = new MockFileHandle("gb18030.csv", original);
+    const root = new MockDirectoryHandle("Tables", [["gb18030.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "gb18030.csv" }));
+    await waitFor(() => expect(screen.getByText("2 行 / 2 列 / GB18030")).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A2" }), { clientX: 80, clientY: 80 });
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText("gb18030")).toBe("ID,Name\r\n2,中文\r\n");
+    expect([...file.getBytes()]).toEqual([
+      0x49, 0x44, 0x2c, 0x4e, 0x61, 0x6d, 0x65, 0x0d, 0x0a,
+      0x32, 0x2c, 0xd6, 0xd0, 0xce, 0xc4, 0x0d, 0x0a
+    ]);
+  });
+
   it("saves the current inline editor value when pressing Ctrl+S", async () => {
     const file = new MockFileHandle("inline-save.csv", "ID,Name\n1,Alpha");
     const root = new MockDirectoryHandle("Tables", [["inline-save.csv", file]]);
@@ -407,6 +441,44 @@ describe("App local directory flow", () => {
 
     await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
     expect(file.getText()).toBe("Edited ID,Name\n1,Alpha");
+  });
+
+  it("starts typing in the next selected cell immediately after Enter commits an inline edit", async () => {
+    const file = new MockFileHandle("enter-next-type.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["enter-next-type.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "enter-next-type.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    let editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Edited ID" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText("A2")).toBeInTheDocument());
+    const keyProxy = screen.getByLabelText("Grid keyboard input") as HTMLInputElement;
+    fireEvent.change(keyProxy, { target: { value: "x" } });
+
+    editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    expect(editor).toBeInTheDocument();
+    expect(editor).toHaveValue("x");
+
+    fireEvent.keyDown(editor, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("Edited ID,Name\nx,Alpha");
   });
 
   it("saves an uncommitted inline editor value from the toolbar save button", async () => {

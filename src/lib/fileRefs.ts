@@ -1,5 +1,7 @@
 import { decodeTextBuffer } from "./textDecode";
 
+export type CsvWritableData = string | Uint8Array;
+
 export type CsvVersion = {
   lastModified: number;
   size: number;
@@ -18,7 +20,7 @@ export interface BrowserFileHandle {
   queryPermission?: (descriptor?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
   requestPermission?: (descriptor?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
   createWritable?: () => Promise<{
-    write(data: string): Promise<void>;
+    write(data: CsvWritableData): Promise<void>;
     close(): Promise<void>;
   }>;
 }
@@ -35,7 +37,7 @@ export interface CsvFileRef {
   path: string;
   writable: boolean;
   read(): Promise<OpenedFile>;
-  write?(text: string): Promise<CsvVersion>;
+  write?(data: CsvWritableData): Promise<CsvVersion>;
   getVersion?(): Promise<CsvVersion>;
 }
 
@@ -96,10 +98,10 @@ export function makeLocalFileRef(handle: BrowserFileHandle, path: string): CsvFi
         }
       };
     },
-    async write(text: string) {
+    async write(data: CsvWritableData) {
       await ensureWritePermission(handle);
       const writable = await handle.createWritable!();
-      await writable.write(text);
+      await writable.write(data);
       await writable.close();
       const file = await handle.getFile();
       return {

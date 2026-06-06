@@ -43,6 +43,7 @@ import {
 } from "./lib/gridOps";
 import { clearHistory, pushUndo, redoTab, undoTab } from "./lib/history";
 import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion, reloadTabFromFileRef } from "./lib/tabModel";
+import { encodeTextBuffer } from "./lib/textDecode";
 import {
   createLocalRoot,
   hasUnloadedLocalDirectory,
@@ -333,12 +334,6 @@ export function App() {
             return "blocked";
           }
         }
-        if (tab.encoding !== "utf-8") {
-          const confirmed = window.confirm(`${tab.name} 当前按 ${tab.encoding.toUpperCase()} 解码。浏览器保存会写成 UTF-8，是否继续？`);
-          if (!confirmed) {
-            return "blocked";
-          }
-        }
         const text = unparseCsvData(
           tab.data,
           tab.delimiter,
@@ -347,13 +342,13 @@ export function App() {
           tab.sourceRows,
           tab.trailingNewline
         );
-        const version = await tab.fileRef.write(text);
+        const version = await tab.fileRef.write(encodeTextBuffer(text, tab.encoding));
         const saved = parseCsvText(text);
         patchTab(id, (current) =>
           clearHistory({
             ...current,
             version,
-            encoding: "utf-8",
+            encoding: tab.encoding,
             sourceRows: saved.sourceRows,
             trailingNewline: saved.trailingNewline,
             latestDiskVersion: undefined,
