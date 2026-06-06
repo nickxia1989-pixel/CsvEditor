@@ -129,6 +129,7 @@ export function GridEditor({
     startWidth: number;
   } | null>(null);
   const [copiedRange, setCopiedRange] = useState<ReturnType<typeof normalizeSelection> | null>(null);
+  const copiedTextRef = useRef<string | null>(null);
 
   const selectionRange = normalizeSelection(tab.selection);
   const selectedValue = readCell(tab.data, tab.selection.focusRow, tab.selection.focusCol);
@@ -341,10 +342,15 @@ export function GridEditor({
   const stickyTopHeight = headerHeight + frozenHeight;
   const stickyLeftWidth = rowHeaderWidth + frozenWidth;
 
+  const clearCopiedState = () => {
+    copiedTextRef.current = null;
+    setCopiedRange(null);
+  };
+
   useEffect(() => {
     setEditing(null);
     setResizeState(null);
-    setCopiedRange(null);
+    clearCopiedState();
     onEditDraftDirtyChange(false);
     dragAnchorRef.current = null;
     setDragging(false);
@@ -384,7 +390,7 @@ export function GridEditor({
 
   const runAfterCommittingEditAndClearingCopiedRange = (action: () => void) => {
     commitEditing(false);
-    setCopiedRange(null);
+    clearCopiedState();
     action();
   };
 
@@ -402,7 +408,7 @@ export function GridEditor({
     if (lockedSet.has(cellKey(row, col))) {
       return;
     }
-    setCopiedRange(null);
+    clearCopiedState();
     composingInputRef.current = false;
     resetKeyProxyValue();
     const currentValue = readCell(tab.data, row, col);
@@ -572,7 +578,7 @@ export function GridEditor({
 
     if (event.key === "Escape" && copiedRange) {
       event.preventDefault();
-      setCopiedRange(null);
+      clearCopiedState();
       onSetStatus("已取消复制选区");
       return;
     }
@@ -583,7 +589,7 @@ export function GridEditor({
     }
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      setCopiedRange(null);
+      clearCopiedState();
       onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
       return;
     }
@@ -684,13 +690,14 @@ export function GridEditor({
     if (editing) {
       return;
     }
-    const text = event.clipboardData.getData("text/plain");
+    const clipboardText = event.clipboardData?.getData("text/plain") ?? "";
+    const text = clipboardText || (copiedRange ? copiedTextRef.current ?? "" : "");
     if (!text) {
       return;
     }
     event.preventDefault();
     try {
-      setCopiedRange(null);
+      clearCopiedState();
       onPaste(
         selectionRange.startRow,
         selectionRange.startCol,
@@ -710,7 +717,6 @@ export function GridEditor({
       return;
     }
     event.preventDefault();
-    setCopiedRange(null);
     const text = matrixToTsv(
       tab.data,
       selectionRange.startRow,
@@ -718,15 +724,16 @@ export function GridEditor({
       selectionRange.endRow,
       selectionRange.endCol
     );
+    copiedTextRef.current = text;
+    setCopiedRange(selectionRange);
     try {
       if (!event.clipboardData) {
         throw new Error("Clipboard event data unavailable");
       }
       event.clipboardData.setData("text/plain", text);
-      setCopiedRange(selectionRange);
       onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
     } catch {
-      onSetStatus("复制失败：浏览器未允许剪贴板写入");
+      onSetStatus(`已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}（仅编辑器内可粘贴）`);
     }
   };
 
@@ -735,7 +742,7 @@ export function GridEditor({
       return;
     }
     event.preventDefault();
-    setCopiedRange(null);
+    clearCopiedState();
     if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
       onSetStatus("选区包含锁定格，不能剪切");
       return;
@@ -926,7 +933,7 @@ export function GridEditor({
         <input
           value={selectedValue}
           onChange={(event) => {
-            setCopiedRange(null);
+            clearCopiedState();
             onSetCell(tab.selection.focusRow, tab.selection.focusCol, event.target.value);
           }}
           disabled={selectedLocked}

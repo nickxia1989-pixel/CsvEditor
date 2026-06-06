@@ -130,15 +130,16 @@ describe("GridEditor editing workflow", () => {
     expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", '"A\tinside"\t"Line 1\nLine 2"\t"He said ""Hi"""');
   });
 
-  it("reports a copy failure when clipboard event data is unavailable", async () => {
+  it("keeps an internal copy when clipboard event data is unavailable", async () => {
     const props = renderGrid();
 
     fireEvent.copy(screen.getByRole("grid", { name: "CSV grid" }));
 
-    expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入");
+    expect(props.onSetStatus).toHaveBeenCalledWith("已复制 1 x 1（仅编辑器内可粘贴）");
+    expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied");
   });
 
-  it("clears the previous copied highlight when a new copy fails", async () => {
+  it("keeps the copied highlight when falling back to editor-internal copy", async () => {
     const clipboardData = createClipboardData();
     const props = renderGrid();
     const grid = screen.getByRole("grid", { name: "CSV grid" });
@@ -149,8 +150,8 @@ describe("GridEditor editing workflow", () => {
 
     fireEvent.copy(grid);
 
-    expect(props.onSetStatus).toHaveBeenCalledWith("复制失败：浏览器未允许剪贴板写入");
-    expect(copiedCell).not.toHaveClass("copied");
+    expect(props.onSetStatus).toHaveBeenCalledWith("已复制 1 x 1（仅编辑器内可粘贴）");
+    expect(copiedCell).toHaveClass("copied");
   });
 
   it("cuts the selected TSV range only after clipboard write succeeds", async () => {
@@ -368,6 +369,34 @@ describe("GridEditor toolbar", () => {
     ]);
     expect(screen.getByRole("gridcell", { name: "A2" })).not.toHaveClass("copied");
     expect(screen.getByRole("gridcell", { name: "B3" })).not.toHaveClass("copied");
+  });
+
+  it("pastes from the internal copied range when clipboard text is unavailable", () => {
+    const { props, rerender } = renderGridWithResult(createTab({ selection: singleCellSelection(0, 0) }));
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+
+    fireEvent.copy(grid);
+    expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied");
+
+    const targetSelection = {
+      anchorRow: 2,
+      anchorCol: 1,
+      focusRow: 1,
+      focusCol: 0
+    };
+    rerender(<GridEditor {...props} tab={createTab({ selection: targetSelection })} />);
+
+    fireEvent.paste(grid, {
+      clipboardData: {
+        getData: () => ""
+      }
+    });
+
+    expect(props.onPaste).toHaveBeenCalledWith(1, 0, [
+      ["ID", "ID"],
+      ["ID", "ID"]
+    ]);
+    expect(screen.getByRole("gridcell", { name: "A1" })).not.toHaveClass("copied");
   });
 
   it("pastes quoted TSV values from Excel without splitting embedded tabs or newlines", () => {
