@@ -474,6 +474,15 @@
 - `npm run build`: passed TypeScript checks and Vite production build.
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 
+## Verification Run - 2026-06-07 Tree Open Active Draft
+
+- File-open hardening: opening a CSV from the left directory tree now commits the current active inline editor before opening or activating the target file, matching toolbar save/refresh and tab-switch behavior. This prevents a visible draft from being lost when a user edits a cell and immediately clicks another file in the tree.
+- Open-race hardening: repeated clicks on the same path while that file is still being opened now reuse the in-flight open and activate the resulting tab instead of creating duplicate tabs from a stale tab snapshot.
+- `npm test -- src/App.test.tsx`: 1 file / 49 tests passed after adding a regression where A1 is edited inline, `second.csv` is opened from the tree, then returning to `first.csv` and saving writes the draft value.
+- `npm test`: 8 files / 142 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

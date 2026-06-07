@@ -152,6 +152,12 @@ export function App() {
         return;
       }
       if (openingPathsRef.current.has(fileRef.path)) {
+        window.setTimeout(() => {
+          const opened = tabsRef.current.find((tab) => tab.path === fileRef.path);
+          if (opened && pendingActivatePathRef.current === fileRef.path) {
+            setActiveTabId(opened.id);
+          }
+        }, 0);
         return;
       }
 
@@ -167,7 +173,7 @@ export function App() {
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
       } finally {
-        openingPathsRef.current.delete(fileRef.path);
+        window.setTimeout(() => openingPathsRef.current.delete(fileRef.path), 0);
       }
     },
     [notify]
@@ -267,10 +273,11 @@ export function App() {
   const handleOpenTreeFile = useCallback(
     (node: TreeNode) => {
       if (node.kind === "file" && node.fileRef) {
-        void openFileRef(node.fileRef);
+        const { fileRef } = node;
+        runAfterActiveEditCommit(() => void openFileRef(fileRef));
       }
     },
-    [openFileRef]
+    [openFileRef, runAfterActiveEditCommit]
   );
 
   const reloadTabFromDisk = useCallback(

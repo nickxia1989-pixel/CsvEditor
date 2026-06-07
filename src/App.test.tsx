@@ -827,6 +827,45 @@ describe("App local directory flow", () => {
     expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("commits an active inline editor before opening another file from the tree", async () => {
+    const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
+    const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", first],
+      ["second.csv", second]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Tree Open Draft" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("tab", { name: "first.csv未保存" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "first.csv未保存" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "first.csv未保存" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(first.getText()).toBe("Tree Open Draft,Name\n1,Alpha");
+  });
+
   it("restores each tab scroll position when switching tabs", async () => {
     const makeCsv = (prefix: string) =>
       Array.from({ length: 80 }, (_, row) => `${prefix}${row},Name ${row},Value ${row}`).join("\n");
