@@ -491,6 +491,32 @@ describe("GridEditor toolbar", () => {
     );
   });
 
+  it("falls back to internal cut when Ctrl+X does not emit a native cut event", async () => {
+    const { props, rerender } = renderGridWithResult(createTab({ selection: singleCellSelection(0, 0) }));
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "x", ctrlKey: true });
+
+    await waitFor(() => expect(props.onClearRange).toHaveBeenCalledWith(0, 0, 0, 0));
+    expect(props.onSetStatus).toHaveBeenCalledWith("已剪切 1 x 1（仅编辑器内可粘贴）");
+    expect(screen.getByRole("gridcell", { name: "A1" })).toHaveClass("copied");
+
+    rerender(<GridEditor {...props} tab={createTab({ selection: singleCellSelection(1, 1) })} />);
+    fireEvent.keyDown(screen.getByLabelText("Grid keyboard input"), { key: "v", ctrlKey: true });
+
+    await waitFor(() => expect(props.onPaste).toHaveBeenCalledWith(1, 1, [["ID"]]));
+  });
+
+  it("blocks internal Ctrl+X fallback when the selection contains a locked cell", async () => {
+    const props = renderGrid(createTab({ lockedCells: ["0:0"] }));
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "x", ctrlKey: true });
+
+    await waitFor(() => expect(props.onSetStatus).toHaveBeenCalledWith("选区包含锁定格，不能剪切"));
+    expect(props.onClearRange).not.toHaveBeenCalled();
+  });
+
   it("cuts through the keyboard proxy when it owns focus", async () => {
     const clipboardData = createClipboardData();
     const props = renderGrid();

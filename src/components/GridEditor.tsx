@@ -581,7 +581,26 @@ export function GridEditor({
     }
   };
 
-  const scheduleKeyboardClipboardFallback = (type: "copy" | "paste") => {
+  const cutSelectionToInternalBuffer = (statusSuffix = "") => {
+    clearCopiedState();
+    if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
+      onSetStatus("选区包含锁定格，不能剪切");
+      return;
+    }
+    const text = matrixToTsv(
+      tab.data,
+      selectionRange.startRow,
+      selectionRange.startCol,
+      selectionRange.endRow,
+      selectionRange.endCol
+    );
+    copiedTextRef.current = text;
+    setCopiedRange(selectionRange);
+    onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+    onSetStatus(`已剪切 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}${statusSuffix}`);
+  };
+
+  const scheduleKeyboardClipboardFallback = (type: "copy" | "paste" | "cut") => {
     const serial = clipboardEventSerialRef.current;
     window.setTimeout(() => {
       if (clipboardEventSerialRef.current !== serial) {
@@ -589,6 +608,10 @@ export function GridEditor({
       }
       if (type === "copy") {
         copySelectionToInternalBuffer("（仅编辑器内可粘贴）");
+        return;
+      }
+      if (type === "cut") {
+        cutSelectionToInternalBuffer("（仅编辑器内可粘贴）");
         return;
       }
       if (copiedRange && copiedTextRef.current) {
@@ -645,6 +668,7 @@ export function GridEditor({
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
+      scheduleKeyboardClipboardFallback("cut");
       return;
     }
 
