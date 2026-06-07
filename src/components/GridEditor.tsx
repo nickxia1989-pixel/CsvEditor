@@ -115,6 +115,7 @@ export function GridEditor({
   const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
   const composingInputRef = useRef(false);
   const suppressNextSelectionScrollRef = useRef(false);
+  const pendingGridFocusRef = useRef(false);
   const [viewport, setViewport] = useState<ViewportState>({
     width: 800,
     height: 500,
@@ -363,6 +364,7 @@ export function GridEditor({
     clearCopiedState();
     onEditDraftDirtyChange(false);
     dragAnchorRef.current = null;
+    pendingGridFocusRef.current = false;
     setDragging(false);
   }, [onEditDraftDirtyChange, tab.id]);
 
@@ -379,7 +381,15 @@ export function GridEditor({
   };
 
   const focusGridInputSoon = () => {
-    window.requestAnimationFrame(focusGridInput);
+    pendingGridFocusRef.current = true;
+    focusGridInput();
+    window.requestAnimationFrame(() => {
+      if (!pendingGridFocusRef.current) {
+        return;
+      }
+      pendingGridFocusRef.current = false;
+      focusGridInput();
+    });
   };
 
   const commitEditing = (refocusGrid = false) => {
@@ -458,6 +468,14 @@ export function GridEditor({
       resetKeyProxyValue();
       composingInputRef.current = false;
     }
+  }, [editing, tab.selection.anchorCol, tab.selection.anchorRow, tab.selection.focusCol, tab.selection.focusRow]);
+
+  useLayoutEffect(() => {
+    if (!pendingGridFocusRef.current || editing) {
+      return;
+    }
+    pendingGridFocusRef.current = false;
+    focusGridInput();
   }, [editing, tab.selection.anchorCol, tab.selection.anchorRow, tab.selection.focusCol, tab.selection.focusRow]);
 
   useEffect(() => {

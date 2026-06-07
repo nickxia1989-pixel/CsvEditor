@@ -558,7 +558,7 @@ describe("GridEditor toolbar", () => {
 
     expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "x");
     expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(1, 0));
-    await waitFor(() => expect(document.activeElement).toBe(keyProxy));
+    expect(document.activeElement).toBe(keyProxy);
   });
 
   it("commits the inline edit before requesting Ctrl+S save", async () => {
@@ -585,6 +585,16 @@ describe("GridEditor toolbar", () => {
     fireEvent.keyDown(keyProxy, { key: "ArrowRight" });
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
+  });
+
+  it("moves focus from the grid viewport to the keyboard proxy synchronously", () => {
+    renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.focus(grid);
+
+    expect(document.activeElement).toBe(keyProxy);
   });
 
   it("focuses the keyboard proxy immediately when selecting a cell", () => {
