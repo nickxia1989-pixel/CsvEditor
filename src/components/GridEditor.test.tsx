@@ -376,6 +376,41 @@ describe("GridEditor toolbar", () => {
     ]);
   });
 
+  it("resets selected-range find mode when switching tabs", async () => {
+    const { props, rerender } = renderGridWithResult(createTab({
+      data: [
+        ["Alpha Wolf", "Name"],
+        ["1001", "Forest Wolf"]
+      ],
+      selection: singleCellSelection(1, 1)
+    }));
+
+    fireEvent.focus(screen.getByLabelText("查找"));
+    fireEvent.click(screen.getByLabelText("仅在选区查找"));
+    expect(screen.getByLabelText("仅在选区查找")).toBeChecked();
+
+    rerender(<GridEditor {...props} tab={createTab({
+      id: "tab-2",
+      name: "npc.csv",
+      path: "Sample/npc.csv",
+      data: [
+        ["Wolf", "Name"],
+        ["1001", "Forest Wolf"]
+      ],
+      selection: singleCellSelection(0, 0)
+    })} />);
+
+    await waitFor(() => expect(screen.getByLabelText("仅在选区查找")).not.toBeChecked());
+    expect(screen.getByText("2 项")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "替换结果" }));
+
+    expect(props.onReplaceFindResults).toHaveBeenCalledWith([
+      expect.objectContaining({ row: 0, col: 0 }),
+      expect.objectContaining({ row: 1, col: 1 })
+    ]);
+  });
+
   it("renders temporary cell colors and applies colors to the selected range", () => {
     const props = renderGrid(createTab({
       cellStyles: {

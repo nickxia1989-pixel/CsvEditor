@@ -149,6 +149,11 @@ export function GridEditor({
   const copiedTextRef = useRef<string | null>(null);
   const clipboardEventSerialRef = useRef(0);
 
+  useEffect(() => {
+    setFindPanelOpen(false);
+    setFindInSelection(false);
+  }, [tab.id]);
+
   const selectionRange = normalizeSelection(tab.selection);
   const selectedValue = readCell(tab.data, tab.selection.focusRow, tab.selection.focusCol);
   const lockedSet = useMemo(() => new Set(tab.lockedCells), [tab.lockedCells]);

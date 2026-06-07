@@ -494,6 +494,15 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` opened; initial no-find-panel layout kept the grid viewport at 524px high with no document horizontal overflow; `wolf` search showed 1 result and jumped to `B3`; background swatch changed `B3` to `rgb(255, 243, 191)` while `未保存 0` stayed clean; selected-range `替换结果` changed only `Forest Wolf` to `Forest Fox`, set `未保存 1`, and produced 0 console errors.
 
+## Verification Run - 2026-06-07 Review Follow-up
+
+- Find-scope hardening: switching tabs now clears the temporary find results panel and `选区内` mode so a selected-range search from one CSV cannot silently constrain another CSV's search/replace workflow. The per-tab find query itself remains part of the tab model.
+- `npm test -- src/components/GridEditor.test.tsx`: 1 file / 58 tests passed after adding a tab-switch regression for selected-range find mode.
+- `npm test`: 8 files / 151 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` and `skill.csv` opened; after enabling `选区内` on `monster.csv`, switching to `skill.csv` reset the checkbox, closed the result panel, kept the grid at about `948 x 524`, and produced no document horizontal overflow. Scrolling `monster.csv` to `480 / 643` and `skill.csv` to `100 / 180` restored each tab's own viewport when switching back and forth, with 0 console error logs.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
