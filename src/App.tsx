@@ -447,12 +447,12 @@ export function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && activeTabId) {
         event.preventDefault();
-        void saveTab(activeTabId);
+        runAfterActiveEditCommit(() => void saveTab(activeTabId));
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTabId, saveTab]);
+  }, [activeTabId, runAfterActiveEditCommit, saveTab]);
 
   useEffect(() => {
     const interval = window.setInterval(async () => {

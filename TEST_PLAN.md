@@ -439,6 +439,15 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, ArrowRight moved selection without scrolling, double-click editing B2 then Enter moved to B3, direct keypress opened a B3 editor with `z`, grid measured `948 x 529`, and console error log was empty.
 
+## Verification Run - 2026-06-06 Global Ctrl+S Active Draft
+
+- Save hardening: the window-level Ctrl+S / Meta+S handler now uses the same active-edit commit path as toolbar save. This prevents a focused or event-routing edge case from saving tab data before a visible inline editor draft reaches the model.
+- `npm test -- src/App.test.tsx`: 1 file / 48 tests passed after adding a writable-file regression where an active inline draft receives a global `window` Ctrl+S and the saved bytes include the draft value.
+- `npm test`: 8 files / 137 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- Browser smoke at `http://127.0.0.1:5173/`: sample tree and `monster.csv` opened, ArrowRight moved selection without scrolling, double-click editing B2 then Enter moved to B3, direct keypress opened a B3 editor with `z`, grid measured `948 x 529`, and console error log was empty.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

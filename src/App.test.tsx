@@ -443,6 +443,35 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe("Edited ID,Name\n1,Alpha");
   });
 
+  it("commits an active inline editor before the global Ctrl+S save handler", async () => {
+    const file = new MockFileHandle("global-inline-save.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["global-inline-save.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "global-inline-save.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Global Saved ID" } });
+
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
+    expect(file.getText()).toBe("Global Saved ID,Name\n1,Alpha");
+  });
+
   it("starts typing in the next selected cell immediately after Enter commits an inline edit", async () => {
     const file = new MockFileHandle("enter-next-type.csv", "ID,Name\n1,Alpha");
     const root = new MockDirectoryHandle("Tables", [["enter-next-type.csv", file]]);
