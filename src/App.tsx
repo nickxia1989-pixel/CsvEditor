@@ -53,7 +53,7 @@ import {
   mergeLoadedNodeState,
   updateNode
 } from "./lib/tree";
-import type { CsvTab, GridScrollPosition, TreeNode } from "./types";
+import type { CsvCellStyle, CsvCellStyleMap, CsvTab, FindResultCell, GridScrollPosition, TreeNode } from "./types";
 import { cellKey, normalizeSelection, singleCellSelection } from "./types";
 
 const HOT_REFRESH_INTERVAL_MS = 5000;
@@ -303,6 +303,7 @@ export function App() {
           freezeRows: current.freezeRows,
           freezeCols: current.freezeCols,
           colWidths: current.colWidths,
+          cellStyles: current.cellStyles,
           autoRefresh: current.autoRefresh,
           findQuery: current.findQuery,
           replaceValue: current.replaceValue
@@ -417,12 +418,13 @@ export function App() {
         }
       }
       delete tabScrollPositionsRef.current[id];
-      setTabs((current) => current.filter((item) => item.id !== id));
+      const remaining = tabsRef.current.filter((item) => item.id !== id);
+      tabsRef.current = remaining;
+      setTabs(remaining);
       setActiveTabId((current) => {
         if (current !== id) {
           return current;
         }
-        const remaining = tabsRef.current.filter((item) => item.id !== id);
         return remaining[remaining.length - 1]?.id ?? null;
       });
     },
@@ -503,6 +505,7 @@ export function App() {
                 freezeRows: current.freezeRows,
                 freezeCols: current.freezeCols,
                 colWidths: current.colWidths,
+                cellStyles: current.cellStyles,
                 autoRefresh: current.autoRefresh,
                 findQuery: current.findQuery,
                 replaceValue: current.replaceValue
@@ -856,6 +859,66 @@ export function App() {
                 };
               })
             }
+            onReplaceFindResults={(results) =>
+              updateActiveTab((tab) => {
+                const query = tab.findQuery.trim();
+                if (!query || results.length === 0) {
+                  return tab;
+                }
+                const locked = new Set(tab.lockedCells);
+                const seen = new Set<string>();
+                let data = tab.data;
+                let count = 0;
+                let skippedLocked = 0;
+                for (const result of results) {
+                  const key = cellKey(result.row, result.col);
+                  if (seen.has(key)) {
+                    continue;
+                  }
+                  seen.add(key);
+                  if (locked.has(key)) {
+                    skippedLocked += 1;
+                    continue;
+                  }
+                  const replacement = replaceAllMatchesInCell(data, result.row, result.col, query, tab.replaceValue);
+                  data = replacement.data;
+                  count += replacement.count;
+                }
+                const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 格` : "";
+                if (count === 0) {
+                  return { ...tab, status: `没有可替换的结果${lockStatus}` };
+                }
+                const base = pushUndo(tab);
+                return {
+                  ...base,
+                  data,
+                  dirty: true,
+                  status: `已替换结果 ${count} 处${lockStatus}`
+                };
+              })
+            }
+            onApplyCellStyle={(startRow, startCol, endRow, endCol, stylePatch) =>
+              updateActiveTab((tab) => {
+                const range = normalizeSelection({ anchorRow: startRow, anchorCol: startCol, focusRow: endRow, focusCol: endCol });
+                const result = applyCellStylePatchToRange(
+                  tab.cellStyles,
+                  range.startRow,
+                  range.startCol,
+                  range.endRow,
+                  range.endCol,
+                  stylePatch
+                );
+                if (result.changedCount === 0) {
+                  return { ...tab, status: "颜色没有变化" };
+                }
+                const base = pushUndo(tab);
+                return {
+                  ...base,
+                  cellStyles: result.styles,
+                  status: `已设置颜色 ${result.changedCount} 格`
+                };
+              })
+            }
             canUndo={activeTab.undoStack.length > 0}
             canRedo={activeTab.redoStack.length > 0}
             onUndo={() => updateActiveTab(undoTab)}
@@ -870,6 +933,7 @@ export function App() {
                   data: insertRows(base.data, startRow, count),
                   sourceRows: insertSourceRows(base.sourceRows, startRow, count),
                   lockedCells: shiftLockedCellsForInsertedRows(base.lockedCells, startRow, count),
+                  cellStyles: shiftCellStylesForInsertedRows(base.cellStyles, startRow, count),
                   selection: singleCellSelection(startRow, base.selection.focusCol),
                   dirty: true,
                   status: `已插入 ${count} 行`
@@ -893,6 +957,7 @@ export function App() {
                   data: nextData,
                   sourceRows: deleteSourceRows(base.sourceRows, startRow, clampedEndRow),
                   lockedCells: shiftLockedCellsForDeletedRows(base.lockedCells, startRow, clampedEndRow),
+                  cellStyles: shiftCellStylesForDeletedRows(base.cellStyles, startRow, clampedEndRow),
                   selection: singleCellSelection(nextRow, base.selection.focusCol),
                   dirty: true,
                   status: `已删除 ${clampedEndRow - startRow + 1} 行`
@@ -916,6 +981,7 @@ export function App() {
                     nextData
                   ),
                   lockedCells: shiftLockedCellsForInsertedColumns(base.lockedCells, startCol, count),
+                  cellStyles: shiftCellStylesForInsertedColumns(base.cellStyles, startCol, count),
                   selection: singleCellSelection(base.selection.focusRow, startCol),
                   dirty: true,
                   status: `已插入 ${count} 列`
@@ -947,6 +1013,7 @@ export function App() {
                     nextData
                   ),
                   lockedCells: shiftLockedCellsForDeletedColumns(base.lockedCells, startCol, clampedEndCol),
+                  cellStyles: shiftCellStylesForDeletedColumns(base.cellStyles, startCol, clampedEndCol),
                   selection: singleCellSelection(base.selection.focusRow, nextCol),
                   dirty: true,
                   status: `已删除 ${clampedEndCol - startCol + 1} 列`
@@ -1142,6 +1209,150 @@ function makeSourceRowFromFields(data: string[], fields: string[], delimiter: st
     data: [...data],
     fields: [...fields]
   };
+}
+
+function replaceAllMatchesInCell(
+  data: CsvTab["data"],
+  row: number,
+  col: number,
+  query: string,
+  replacement: string
+): { data: CsvTab["data"]; count: number } {
+  const current = readCell(data, row, col);
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return { data, count: 0 };
+  }
+  const lowerCurrent = current.toLowerCase();
+  const lowerQuery = normalizedQuery.toLowerCase();
+  if (!lowerCurrent.includes(lowerQuery)) {
+    return { data, count: 0 };
+  }
+
+  let count = 0;
+  let cursor = 0;
+  let nextValue = "";
+  let matchIndex = lowerCurrent.indexOf(lowerQuery, cursor);
+  while (matchIndex >= 0) {
+    nextValue += `${current.slice(cursor, matchIndex)}${replacement}`;
+    cursor = matchIndex + normalizedQuery.length;
+    count += 1;
+    matchIndex = lowerCurrent.indexOf(lowerQuery, cursor);
+  }
+  nextValue += current.slice(cursor);
+  return { data: writeCell(data, row, col, nextValue), count };
+}
+
+function applyCellStylePatchToRange(
+  styles: CsvCellStyleMap,
+  startRow: number,
+  startCol: number,
+  endRow: number,
+  endCol: number,
+  stylePatch: Partial<CsvCellStyle>
+): { styles: CsvCellStyleMap; changedCount: number } {
+  const next: CsvCellStyleMap = { ...styles };
+  const hasTextColor = Object.prototype.hasOwnProperty.call(stylePatch, "textColor");
+  const hasBackgroundColor = Object.prototype.hasOwnProperty.call(stylePatch, "backgroundColor");
+  let changedCount = 0;
+
+  for (let row = startRow; row <= endRow; row += 1) {
+    for (let col = startCol; col <= endCol; col += 1) {
+      const key = cellKey(row, col);
+      const current = next[key] ?? {};
+      const updated: CsvCellStyle = { ...current };
+      if (hasTextColor) {
+        if (stylePatch.textColor) {
+          updated.textColor = stylePatch.textColor;
+        } else {
+          delete updated.textColor;
+        }
+      }
+      if (hasBackgroundColor) {
+        if (stylePatch.backgroundColor) {
+          updated.backgroundColor = stylePatch.backgroundColor;
+        } else {
+          delete updated.backgroundColor;
+        }
+      }
+      if (cellStylesEqual(current, updated)) {
+        continue;
+      }
+      changedCount += 1;
+      if (hasCellStyle(updated)) {
+        next[key] = updated;
+      } else {
+        delete next[key];
+      }
+    }
+  }
+
+  return { styles: next, changedCount };
+}
+
+function shiftCellStylesForInsertedRows(styles: CsvCellStyleMap, startRow: number, count: number): CsvCellStyleMap {
+  return mapCellStyles(styles, (row, col) => ({ row: row >= startRow ? row + count : row, col }));
+}
+
+function shiftCellStylesForDeletedRows(styles: CsvCellStyleMap, startRow: number, endRow: number): CsvCellStyleMap {
+  const deletedCount = endRow - startRow + 1;
+  return mapCellStyles(styles, (row, col) => {
+    if (row >= startRow && row <= endRow) {
+      return null;
+    }
+    return { row: row > endRow ? row - deletedCount : row, col };
+  });
+}
+
+function shiftCellStylesForInsertedColumns(styles: CsvCellStyleMap, startCol: number, count: number): CsvCellStyleMap {
+  return mapCellStyles(styles, (row, col) => ({ row, col: col >= startCol ? col + count : col }));
+}
+
+function shiftCellStylesForDeletedColumns(styles: CsvCellStyleMap, startCol: number, endCol: number): CsvCellStyleMap {
+  const deletedCount = endCol - startCol + 1;
+  return mapCellStyles(styles, (row, col) => {
+    if (col >= startCol && col <= endCol) {
+      return null;
+    }
+    return { row, col: col > endCol ? col - deletedCount : col };
+  });
+}
+
+function mapCellStyles(
+  styles: CsvCellStyleMap,
+  mapper: (row: number, col: number) => FindResultCell | null
+): CsvCellStyleMap {
+  const next: CsvCellStyleMap = {};
+  Object.entries(styles).forEach(([key, style]) => {
+    const parsed = parseCellKey(key);
+    if (!parsed) {
+      next[key] = { ...style };
+      return;
+    }
+    const mapped = mapper(parsed.row, parsed.col);
+    if (mapped) {
+      next[cellKey(mapped.row, mapped.col)] = { ...style };
+    }
+  });
+  return next;
+}
+
+function parseCellKey(key: string): FindResultCell | null {
+  const [rowText, colText] = key.split(":");
+  const row = Number(rowText);
+  const col = Number(colText);
+  if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || col < 0) {
+    return null;
+  }
+  return { row, col };
+}
+
+function cellStylesEqual(left: CsvCellStyle, right: CsvCellStyle): boolean {
+  return (left.textColor ?? "") === (right.textColor ?? "") && (left.backgroundColor ?? "") === (right.backgroundColor ?? "");
+}
+
+function hasCellStyle(style: CsvCellStyle): boolean {
+  return Boolean(style.textColor || style.backgroundColor);
 }
 
 function rowsEqual(left: string[], right: string[]): boolean {

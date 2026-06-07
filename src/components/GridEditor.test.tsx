@@ -37,6 +37,7 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
     findQuery: "wolf",
     replaceValue: "fox",
     lockedCells: [],
+    cellStyles: {},
     selection: singleCellSelection(0, 0),
     zoom: 1,
     freezeRows: 0,
@@ -68,6 +69,8 @@ function createGridProps(tab = createTab()) {
     onScrollPositionChange: vi.fn(),
     onReplaceCurrent: vi.fn(),
     onReplaceAll: vi.fn(),
+    onReplaceFindResults: vi.fn(),
+    onApplyCellStyle: vi.fn(),
     canUndo: tab.undoStack.length > 0,
     canRedo: tab.redoStack.length > 0,
     onUndo: vi.fn(),
@@ -248,6 +251,7 @@ describe("GridEditor editing workflow", () => {
       data: [["old"]],
       sourceRows: [],
       lockedCells: [],
+      cellStyles: {},
       selection: singleCellSelection(0, 0),
       colWidths: {},
       dirty: false
@@ -322,6 +326,75 @@ describe("GridEditor toolbar", () => {
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 1));
   });
 
+  it("focuses the find input with Ctrl+F from the keyboard proxy", async () => {
+    renderGrid();
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+
+    fireEvent.keyDown(keyProxy, { key: "f", ctrlKey: true });
+
+    await waitFor(() => expect(screen.getByLabelText("查找")).toHaveFocus());
+  });
+
+  it("limits find results to the selected range and jumps from the result list", async () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["Alpha Wolf", "Name"],
+        ["1001", "Forest Wolf"],
+        ["1002", "Wolf Den"]
+      ],
+      selection: singleCellSelection(1, 1)
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "下一处" }));
+    await waitFor(() => expect(screen.getByText((text) => text.includes("全表找到 3 项"))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("仅在选区查找"));
+
+    await waitFor(() => expect(screen.getByText((text) => text.includes("选区找到 1 项"))).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "跳转到 A1" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "跳转到 B2" }));
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(1, 1));
+  });
+
+  it("passes the current find result list to batch replace", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["Alpha Wolf", "Name"],
+        ["1001", "Forest Wolf"]
+      ],
+      selection: singleCellSelection(1, 1)
+    }));
+
+    fireEvent.focus(screen.getByLabelText("查找"));
+    fireEvent.click(screen.getByLabelText("仅在选区查找"));
+    fireEvent.click(screen.getByRole("button", { name: "替换结果" }));
+
+    expect(props.onReplaceFindResults).toHaveBeenCalledTimes(1);
+    expect(props.onReplaceFindResults.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ row: 1, col: 1 })
+    ]);
+  });
+
+  it("renders temporary cell colors and applies colors to the selected range", () => {
+    const props = renderGrid(createTab({
+      cellStyles: {
+        "1:1": {
+          textColor: "#b42318",
+          backgroundColor: "#fff3bf"
+        }
+      },
+      selection: singleCellSelection(1, 1)
+    }));
+
+    expect(screen.getByRole("gridcell", { name: "B2" })).toHaveStyle("color: #b42318");
+    expect(screen.getByRole("gridcell", { name: "B2" })).toHaveStyle("background-color: #fff3bf");
+
+    fireEvent.change(screen.getByLabelText("文字颜色"), { target: { value: "#1d4ed8" } });
+
+    expect(props.onApplyCellStyle).toHaveBeenCalledWith(1, 1, 1, 1, { textColor: "#1d4ed8" });
+  });
+
   it("toggles auto refresh for the active tab", () => {
     const props = renderGrid();
     fireEvent.click(screen.getByRole("button", { name: "自动热刷" }));
@@ -333,6 +406,7 @@ describe("GridEditor toolbar", () => {
       data: [["old"]],
       sourceRows: [],
       lockedCells: [],
+      cellStyles: {},
       selection: singleCellSelection(0, 0),
       colWidths: {},
       dirty: false

@@ -1311,6 +1311,85 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe("ID,Name\n1,Forest Fox\n2,Forest Fox");
   });
 
+  it("replaces only the current selected-range find results", async () => {
+    const file = new MockFileHandle("range-replace.csv", "Wolf,Name\n1,Forest Wolf\n2,Forest Wolf");
+    const root = new MockDirectoryHandle("Tables", [["range-replace.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "range-replace.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }));
+    fireEvent.change(screen.getByLabelText("查找"), { target: { value: "wolf" } });
+    fireEvent.change(screen.getByLabelText("替换为"), { target: { value: "Fox" } });
+    fireEvent.click(screen.getByLabelText("仅在选区查找"));
+    fireEvent.click(screen.getByRole("button", { name: "替换结果" }));
+    await waitFor(() => expect(screen.getByText("已替换结果 1 处")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("Wolf,Name\n1,Forest Fox\n2,Forest Wolf");
+  });
+
+  it("keeps cell colors out of CSV saves and clears them after closing the tab", async () => {
+    const file = new MockFileHandle("colors.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["colors.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "colors.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }));
+    fireEvent.change(screen.getByLabelText("背景颜色"), { target: { value: "#fff3bf" } });
+
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toHaveStyle("background-color: #fff3bf"));
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+    expect(file.getText()).toBe("A,B\n1,2");
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭 colors.csv" }));
+    await waitFor(() => expect(screen.queryByRole("grid", { name: "CSV grid" })).not.toBeInTheDocument());
+    fireEvent.click(await screen.findByRole("button", { name: "colors.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toBeInTheDocument());
+
+    expect(screen.getByRole("gridcell", { name: "B2" })).not.toHaveStyle("background-color: #fff3bf");
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+    expect(file.getText()).toBe("A,B\n1,2");
+  });
+
+  it("reopens the same file when it is clicked immediately after closing the only tab", async () => {
+    const file = new MockFileHandle("reopen.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["reopen.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "reopen.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭 reopen.csv" }));
+    fireEvent.click(screen.getByRole("button", { name: "reopen.csv" }));
+
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toBeInTheDocument());
+    expect(screen.getByText("未保存 0")).toBeInTheDocument();
+  });
+
   it("updates freeze and zoom controls without disturbing the selected cell", async () => {
     const file = new MockFileHandle("view-controls.csv", "A,B\n1,2");
     const root = new MockDirectoryHandle("Tables", [["view-controls.csv", file]]);

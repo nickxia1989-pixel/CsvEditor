@@ -5,24 +5,25 @@ import {
   Columns3,
   Lock,
   Minus,
+  PaintBucket,
   Pause,
   Play,
   Plus,
   Redo2,
   Rows3,
   Search,
+  Type,
   Undo2,
   Unlock
 } from "lucide-react";
 import {
-  findCell,
   maxColumnCount,
   matrixToTsv,
   parseTsv,
   readCell,
   writeCell
 } from "../lib/csv";
-import type { CsvMatrix, CsvSelection, CsvTab, GridScrollPosition } from "../types";
+import type { CsvCellStyle, CsvMatrix, CsvSelection, CsvTab, FindResultCell, GridScrollPosition } from "../types";
 import { cellKey, normalizeSelection, singleCellSelection } from "../types";
 
 const ROW_HEADER_WIDTH = 56;
@@ -32,6 +33,8 @@ const DEFAULT_ROW_HEIGHT = 28;
 const MIN_COL_WIDTH = 54;
 const OVERSCAN = 6;
 export const COMMIT_ACTIVE_EDIT_EVENT = "csv-editor:commit-active-edit";
+const TEXT_COLOR_PRESETS = ["#172026", "#b42318", "#0f766e", "#1d4ed8"];
+const BACKGROUND_COLOR_PRESETS = ["#ffffff", "#fff3bf", "#dff0ee", "#eaf3ff"];
 
 type GridEditorProps = {
   tab: CsvTab;
@@ -52,6 +55,14 @@ type GridEditorProps = {
   onScrollPositionChange(tabId: string, position: GridScrollPosition): void;
   onReplaceCurrent(): void;
   onReplaceAll(): void;
+  onReplaceFindResults(results: FindResultCell[]): void;
+  onApplyCellStyle(
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+    stylePatch: Partial<CsvCellStyle>
+  ): void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo(): void;
@@ -97,6 +108,8 @@ export function GridEditor({
   onScrollPositionChange,
   onReplaceCurrent,
   onReplaceAll,
+  onReplaceFindResults,
+  onApplyCellStyle,
   canUndo,
   canRedo,
   onUndo,
@@ -111,6 +124,7 @@ export function GridEditor({
 }: GridEditorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const keyProxyRef = useRef<HTMLInputElement | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
   const viewportFrameRef = useRef<number | null>(null);
   const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
   const composingInputRef = useRef(false);
@@ -124,6 +138,8 @@ export function GridEditor({
   });
   const [editing, setEditing] = useState<EditingCell>(null);
   const [dragging, setDragging] = useState(false);
+  const [findPanelOpen, setFindPanelOpen] = useState(false);
+  const [findInSelection, setFindInSelection] = useState(false);
   const [resizeState, setResizeState] = useState<{
     col: number;
     startX: number;
@@ -329,6 +345,7 @@ export function GridEditor({
 
   const selectedLabel = `${columnName(tab.selection.focusCol)}${tab.selection.focusRow + 1}`;
   const selectedLocked = lockedSet.has(cellKey(tab.selection.focusRow, tab.selection.focusCol));
+  const selectedStyle = tab.cellStyles[cellKey(tab.selection.focusRow, tab.selection.focusCol)] ?? {};
   const editingDirty = Boolean(
     editing &&
       !lockedSet.has(cellKey(editing.row, editing.col)) &&
@@ -563,6 +580,64 @@ export function GridEditor({
       ? writeCell(tab.data, editing.row, editing.col, editing.value)
       : tab.data;
 
+  const findResults = useMemo(() => {
+    const query = tab.findQuery.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+
+    const searchableData = dataWithEditingDraft();
+    const usedEndRow = searchableData.length - 1;
+    const usedEndCol = maxColumnCount(searchableData) - 1;
+    if (usedEndRow < 0 || usedEndCol < 0) {
+      return [];
+    }
+
+    const scope = findInSelection
+      ? {
+          startRow: Math.max(0, selectionRange.startRow),
+          endRow: Math.min(selectionRange.endRow, usedEndRow),
+          startCol: Math.max(0, selectionRange.startCol),
+          endCol: Math.min(selectionRange.endCol, usedEndCol)
+        }
+      : {
+          startRow: 0,
+          endRow: usedEndRow,
+          startCol: 0,
+          endCol: usedEndCol
+        };
+
+    if (scope.startRow > scope.endRow || scope.startCol > scope.endCol) {
+      return [];
+    }
+
+    const results: Array<FindResultCell & { value: string; locked: boolean }> = [];
+    for (let row = scope.startRow; row <= scope.endRow; row += 1) {
+      for (let col = scope.startCol; col <= scope.endCol; col += 1) {
+        const value = readCell(searchableData, row, col);
+        if (value.toLowerCase().includes(query)) {
+          results.push({ row, col, value, locked: lockedSet.has(cellKey(row, col)) });
+        }
+      }
+    }
+    return results;
+  }, [
+    editing,
+    findInSelection,
+    lockedSet,
+    selectionRange.endCol,
+    selectionRange.endRow,
+    selectionRange.startCol,
+    selectionRange.startRow,
+    tab.data,
+    tab.findQuery
+  ]);
+
+  const activeFindResultIndex = findResults.findIndex(
+    (result) => result.row === tab.selection.focusRow && result.col === tab.selection.focusCol
+  );
+  const visibleFindResults = findResults.slice(0, 100);
+
   const copySelectionToInternalBuffer = (statusSuffix = "") => {
     const text = matrixToTsv(
       tab.data,
@@ -638,11 +713,40 @@ export function GridEditor({
     }, 0);
   };
 
+  const focusFindInput = () => {
+    setFindPanelOpen(true);
+    window.requestAnimationFrame(() => {
+      findInputRef.current?.focus({ preventScroll: true });
+      findInputRef.current?.select();
+    });
+  };
+
+  const applySelectionStyle = (stylePatch: Partial<CsvCellStyle>) => {
+    runAfterCommittingEditAndClearingCopiedRange(() =>
+      onApplyCellStyle(
+        selectionRange.startRow,
+        selectionRange.startCol,
+        selectionRange.endRow,
+        selectionRange.endCol,
+        stylePatch
+      )
+    );
+  };
+
   const runFind = (direction: "next" | "previous") => {
-    const result = findCell(dataWithEditingDraft(), tab.findQuery, tab.selection.focusRow, tab.selection.focusCol, direction);
+    setFindPanelOpen(true);
+    const nextIndex = getAdjacentFindResultIndex(
+      findResults,
+      tab.selection.focusRow,
+      tab.selection.focusCol,
+      direction
+    );
     commitEditing(false);
-    if (result) {
+    if (nextIndex >= 0) {
+      const result = findResults[nextIndex];
       onSelectionChange(singleCellSelection(result.row, result.col));
+    } else if (findAvailable) {
+      onSetStatus(findInSelection ? "选区内没有匹配内容" : "没有匹配内容");
     }
   };
 
@@ -666,6 +770,12 @@ export function GridEditor({
       event.preventDefault();
       clearCopiedState();
       onRedo();
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      focusFindInput();
       return;
     }
 
@@ -935,6 +1045,7 @@ export function GridEditor({
     const focus = row === tab.selection.focusRow && col === tab.selection.focusCol;
     const locked = lockedSet.has(key);
     const isEditing = editing?.row === row && editing.col === col;
+    const customStyle = tab.cellStyles[key];
     const copied =
       copiedRange &&
       row >= copiedRange.startRow &&
@@ -955,7 +1066,9 @@ export function GridEditor({
           top: headerHeight + row * rowHeight,
           width: colWidths[col],
           height: rowHeight,
-          lineHeight: `${rowHeight - 2}px`
+          lineHeight: `${rowHeight - 2}px`,
+          color: customStyle?.textColor,
+          backgroundColor: customStyle?.backgroundColor
         }}
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest(".cell-editor")) {
@@ -996,7 +1109,11 @@ export function GridEditor({
             }}
             onBlur={() => commitEditing(false)}
             onKeyDown={(event) => {
-              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+                event.preventDefault();
+                event.stopPropagation();
+                focusFindInput();
+              } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
                 event.preventDefault();
                 event.stopPropagation();
                 commitEditingAndRequestSave();
@@ -1142,8 +1259,13 @@ export function GridEditor({
         <label className="grid-search">
           <Search size={15} />
           <input
+            ref={findInputRef}
             value={tab.findQuery}
-            onChange={(event) => onSetFindQuery(event.target.value)}
+            onFocus={() => setFindPanelOpen(true)}
+            onChange={(event) => {
+              setFindPanelOpen(true);
+              onSetFindQuery(event.target.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -1154,6 +1276,21 @@ export function GridEditor({
             aria-label="查找"
           />
         </label>
+        <label className={`toggle-chip ${findInSelection ? "active-toggle" : ""}`} title="只在当前选区内查找和替换结果">
+          <input
+            type="checkbox"
+            checked={findInSelection}
+            onChange={(event) => {
+              setFindPanelOpen(true);
+              setFindInSelection(event.target.checked);
+            }}
+            aria-label="仅在选区查找"
+          />
+          选区内
+        </label>
+        <span className="find-count" title="当前查找结果数量">
+          {findAvailable ? `${findResults.length} 项` : "0 项"}
+        </span>
         <label className="grid-search replace-box">
           <input
             value={tab.replaceValue}
@@ -1171,9 +1308,59 @@ export function GridEditor({
         <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onReplaceCurrent)} disabled={!findAvailable}>
           替换
         </button>
+        <button
+          className="tool-button"
+          onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onReplaceFindResults(findResults))}
+          disabled={!findAvailable || findResults.length === 0}
+        >
+          替换结果
+        </button>
         <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onReplaceAll)} disabled={!findAvailable}>
           全部替换
         </button>
+        <div className="color-tools" role="group" aria-label="单元格颜色">
+          <label className="color-picker" title="文字颜色">
+            <Type size={14} />
+            <input
+              type="color"
+              value={selectedStyle.textColor ?? "#172026"}
+              onChange={(event) => applySelectionStyle({ textColor: event.target.value })}
+              aria-label="文字颜色"
+            />
+          </label>
+          {TEXT_COLOR_PRESETS.map((color) => (
+            <button
+              key={`text-${color}`}
+              className="color-swatch"
+              style={{ backgroundColor: color }}
+              onClick={() => applySelectionStyle({ textColor: color })}
+              title={`文字颜色 ${color}`}
+              aria-label={`文字颜色 ${color}`}
+            />
+          ))}
+          <label className="color-picker" title="背景颜色">
+            <PaintBucket size={14} />
+            <input
+              type="color"
+              value={selectedStyle.backgroundColor ?? "#ffffff"}
+              onChange={(event) => applySelectionStyle({ backgroundColor: event.target.value })}
+              aria-label="背景颜色"
+            />
+          </label>
+          {BACKGROUND_COLOR_PRESETS.map((color) => (
+            <button
+              key={`background-${color}`}
+              className="color-swatch background"
+              style={{ backgroundColor: color }}
+              onClick={() => applySelectionStyle({ backgroundColor: color })}
+              title={`背景颜色 ${color}`}
+              aria-label={`背景颜色 ${color}`}
+            />
+          ))}
+          <button className="tool-button compact" onClick={() => applySelectionStyle({ textColor: undefined, backgroundColor: undefined })}>
+            清除颜色
+          </button>
+        </div>
         <button
           className={`tool-button ${tab.autoRefresh ? "active-toggle" : ""}`}
           onClick={() => runAfterCommittingEdit(() => onSetAutoRefresh(!tab.autoRefresh))}
@@ -1183,6 +1370,47 @@ export function GridEditor({
           {tab.autoRefresh ? "自动热刷" : "热刷暂停"}
         </button>
       </div>
+
+      {findPanelOpen && findAvailable ? (
+        <div className="find-results-panel" aria-label="查找结果">
+          <div className="find-results-summary">
+            <Search size={14} />
+            <span>
+              {findInSelection ? "选区" : "全表"}找到 {findResults.length} 项
+              {activeFindResultIndex >= 0 ? `，当前第 ${activeFindResultIndex + 1} 项` : ""}
+            </span>
+            <button className="icon-button" onClick={() => setFindPanelOpen(false)} title="收起查找结果" aria-label="收起查找结果">
+              <ChevronUp size={14} />
+            </button>
+          </div>
+          <div className="find-result-list">
+            {visibleFindResults.length > 0 ? (
+              visibleFindResults.map((result, index) => (
+                <button
+                  key={`${result.row}:${result.col}`}
+                  className={`find-result ${activeFindResultIndex === index ? "active" : ""}`}
+                  onClick={() => {
+                    commitEditing(false);
+                    onSelectionChange(singleCellSelection(result.row, result.col));
+                    focusGridInputSoon();
+                  }}
+                  title={result.value}
+                  aria-label={`跳转到 ${columnName(result.col)}${result.row + 1}`}
+                >
+                  <span className="find-result-cell">{columnName(result.col)}{result.row + 1}</span>
+                  <span className="find-result-preview">{formatCellValuePreview(result.value)}</span>
+                  {result.locked ? <span className="find-result-lock">锁</span> : null}
+                </button>
+              ))
+            ) : (
+              <span className="find-result-empty">没有匹配内容</span>
+            )}
+            {findResults.length > visibleFindResults.length ? (
+              <span className="find-result-more">仅显示前 {visibleFindResults.length} 项</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div
         className="grid-viewport"
@@ -1347,6 +1575,45 @@ function columnName(index: number): string {
     cursor = Math.floor((cursor - mod) / 26);
   }
   return name;
+}
+
+function getAdjacentFindResultIndex(
+  results: FindResultCell[],
+  row: number,
+  col: number,
+  direction: "next" | "previous"
+): number {
+  if (results.length === 0) {
+    return -1;
+  }
+  const exactIndex = results.findIndex((result) => result.row === row && result.col === col);
+  if (exactIndex >= 0) {
+    return direction === "next"
+      ? (exactIndex + 1) % results.length
+      : (exactIndex - 1 + results.length) % results.length;
+  }
+  if (direction === "next") {
+    const afterIndex = results.findIndex((result) => compareCellPosition(result, row, col) > 0);
+    return afterIndex >= 0 ? afterIndex : 0;
+  }
+  for (let index = results.length - 1; index >= 0; index -= 1) {
+    if (compareCellPosition(results[index], row, col) < 0) {
+      return index;
+    }
+  }
+  return results.length - 1;
+}
+
+function compareCellPosition(cell: FindResultCell, row: number, col: number): number {
+  if (cell.row !== row) {
+    return cell.row - row;
+  }
+  return cell.col - col;
+}
+
+function formatCellValuePreview(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > 72 ? `${compact.slice(0, 72)}...` : compact || "(空)";
 }
 
 function rangeHasLocked(

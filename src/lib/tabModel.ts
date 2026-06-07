@@ -25,6 +25,7 @@ export async function createTabFromFileRef(fileRef: CsvFileRef, id: string): Pro
     findQuery: "",
     replaceValue: "",
     lockedCells: [],
+    cellStyles: {},
     selection: singleCellSelection(0, 0),
     zoom: 1,
     freezeRows: 2,

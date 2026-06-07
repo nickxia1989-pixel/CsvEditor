@@ -483,6 +483,17 @@
 - `npm run build`: passed TypeScript checks and Vite production build.
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 
+## Verification Run - 2026-06-07 Find Replace And View Colors
+
+- Find/replace workflow: `Ctrl+F` focuses the editor find input, find results are listed, the `选区内` toggle scopes results to the current selection, clicking a result jumps to the cell, and `替换结果` replaces the current result list without changing unrelated matches.
+- View-only colors: selected ranges can receive text and background colors from compact color controls; the styles render in the grid, participate in undo/redo snapshots and row/column coordinate shifts, but are not saved to CSV and are cleared by closing/reopening a tab.
+- Close/reopen hardening: closing the only tab now updates the tab ref immediately, so clicking the same file again right away reopens it instead of reusing a stale closed tab.
+- `npm test -- src/components/GridEditor.test.tsx src/App.test.tsx src/lib/history.test.ts`: 3 files / 113 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm test`: 8 files / 150 tests passed.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` opened; initial no-find-panel layout kept the grid viewport at 524px high with no document horizontal overflow; `wolf` search showed 1 result and jumped to `B3`; background swatch changed `B3` to `rgb(255, 243, 191)` while `未保存 0` stayed clean; selected-range `替换结果` changed only `Forest Wolf` to `Forest Fox`, set `未保存 1`, and produced 0 console errors.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。

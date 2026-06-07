@@ -7,6 +7,7 @@ export function snapshotTab(tab: CsvTab): CsvTabHistorySnapshot {
     data: tab.data.map((row) => [...row]),
     sourceRows: cloneSourceRows(tab.sourceRows),
     lockedCells: [...tab.lockedCells],
+    cellStyles: cloneCellStyles(tab.cellStyles),
     selection: { ...tab.selection },
     colWidths: { ...tab.colWidths },
     dirty: tab.dirty
@@ -67,6 +68,7 @@ function restoreSnapshot(tab: CsvTab, snapshot: CsvTabHistorySnapshot, status: s
     data: snapshot.data.map((row) => [...row]),
     sourceRows: cloneSourceRows(snapshot.sourceRows),
     lockedCells: [...snapshot.lockedCells],
+    cellStyles: cloneCellStyles(snapshot.cellStyles),
     selection: { ...snapshot.selection },
     colWidths: { ...snapshot.colWidths },
     dirty: snapshot.dirty,
@@ -78,4 +80,8 @@ function cloneSourceRows(sourceRows: CsvTab["sourceRows"]): CsvTab["sourceRows"]
   return sourceRows.map((row) =>
     row ? { raw: row.raw, data: [...row.data], fields: row.fields ? [...row.fields] : undefined } : undefined
   );
+}
+
+function cloneCellStyles(styles: CsvTab["cellStyles"]): CsvTab["cellStyles"] {
+  return Object.fromEntries(Object.entries(styles).map(([key, style]) => [key, { ...style }]));
 }

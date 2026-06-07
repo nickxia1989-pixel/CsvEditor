@@ -15,6 +15,18 @@ export type GridScrollPosition = {
   scrollLeft: number;
 };
 
+export type CsvCellStyle = {
+  textColor?: string;
+  backgroundColor?: string;
+};
+
+export type CsvCellStyleMap = Record<string, CsvCellStyle>;
+
+export type FindResultCell = {
+  row: number;
+  col: number;
+};
+
 export type CsvTab = {
   id: string;
   name: string;
@@ -35,6 +47,7 @@ export type CsvTab = {
   findQuery: string;
   replaceValue: string;
   lockedCells: string[];
+  cellStyles: CsvCellStyleMap;
   selection: CsvSelection;
   zoom: number;
   freezeRows: number;
@@ -49,6 +62,7 @@ export type CsvTabHistorySnapshot = {
   data: CsvMatrix;
   sourceRows: Array<CsvSourceRow | undefined>;
   lockedCells: string[];
+  cellStyles: CsvCellStyleMap;
   selection: CsvSelection;
   colWidths: Record<number, number>;
   dirty: boolean;

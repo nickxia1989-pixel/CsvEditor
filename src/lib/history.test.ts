@@ -33,6 +33,7 @@ function makeTab(): CsvTab {
     findQuery: "",
     replaceValue: "",
     lockedCells: [],
+    cellStyles: {},
     selection: singleCellSelection(0, 0),
     zoom: 1,
     freezeRows: 0,
@@ -80,5 +81,22 @@ describe("history", () => {
     withHistory.sourceRows[0]!.data[0] = "mutated";
 
     expect(undoTab(withHistory).sourceRows).toEqual(makeSourceRows());
+  });
+
+  it("undoes and redoes temporary cell styles", () => {
+    const original = {
+      ...makeTab(),
+      cellStyles: { "0:0": { backgroundColor: "#fff3bf" } }
+    };
+    const edited = {
+      ...pushUndo(original),
+      cellStyles: { "0:0": { textColor: "#b42318" } }
+    };
+
+    const undone = undoTab(edited);
+    expect(undone.cellStyles).toEqual({ "0:0": { backgroundColor: "#fff3bf" } });
+
+    const redone = redoTab(undone);
+    expect(redone.cellStyles).toEqual({ "0:0": { textColor: "#b42318" } });
   });
 });
