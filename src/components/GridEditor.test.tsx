@@ -242,6 +242,38 @@ describe("GridEditor editing workflow", () => {
     expect(copiedCell).not.toHaveClass("copied");
   });
 
+  it("clears the copied highlight when keyboard undo or redo runs", async () => {
+    const clipboardData = createClipboardData();
+    const snapshot = {
+      data: [["old"]],
+      sourceRows: [],
+      lockedCells: [],
+      selection: singleCellSelection(0, 0),
+      colWidths: {},
+      dirty: false
+    };
+    const props = renderGrid(createTab({ undoStack: [snapshot], redoStack: [snapshot] }));
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    const keyProxy = screen.getByLabelText("Grid keyboard input");
+    const copiedCell = screen.getByRole("gridcell", { name: "A1" });
+
+    fireEvent.copy(grid, { clipboardData });
+    await waitFor(() => expect(copiedCell).toHaveClass("copied"));
+
+    fireEvent.keyDown(keyProxy, { key: "z", ctrlKey: true });
+
+    expect(props.onUndo).toHaveBeenCalledTimes(1);
+    expect(copiedCell).not.toHaveClass("copied");
+
+    fireEvent.copy(grid, { clipboardData });
+    await waitFor(() => expect(copiedCell).toHaveClass("copied"));
+
+    fireEvent.keyDown(keyProxy, { key: "y", ctrlKey: true });
+
+    expect(props.onRedo).toHaveBeenCalledTimes(1);
+    expect(copiedCell).not.toHaveClass("copied");
+  });
+
   it("blocks cut when the selection contains a locked cell", async () => {
     const clipboardData = createClipboardData();
     const props = renderGrid(createTab({

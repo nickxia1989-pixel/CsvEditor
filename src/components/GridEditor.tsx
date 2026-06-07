@@ -653,6 +653,7 @@ export function GridEditor({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
+      clearCopiedState();
       if (event.shiftKey) {
         onRedo();
       } else {
@@ -663,6 +664,7 @@ export function GridEditor({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
       event.preventDefault();
+      clearCopiedState();
       onRedo();
       return;
     }
