@@ -1113,7 +1113,7 @@ describe("App local directory flow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "locked.csv" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
 
-    fireEvent.click(screen.getByRole("button", { name: "锁定选区" }));
+    fireEvent.click(screen.getByRole("button", { name: "锁定" }));
 
     expect(screen.getByLabelText("Selected cell value")).toBeDisabled();
     expect(screen.getByText("已锁定")).toBeInTheDocument();
@@ -1138,7 +1138,7 @@ describe("App local directory flow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "paste-locked.csv" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
 
-    fireEvent.click(screen.getByRole("button", { name: "锁定选区" }));
+    fireEvent.click(screen.getByRole("button", { name: "锁定" }));
     fireEvent.paste(screen.getByRole("grid", { name: "CSV grid" }), {
       clipboardData: {
         getData: () => "X\tY"
@@ -1165,7 +1165,7 @@ describe("App local directory flow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "clear-locked.csv" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
 
-    fireEvent.click(screen.getByRole("button", { name: "锁定选区" }));
+    fireEvent.click(screen.getByRole("button", { name: "锁定" }));
     fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column A" }));
     fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "Delete" });
 
@@ -1407,14 +1407,14 @@ describe("App local directory flow", () => {
     fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }), { clientX: 180, clientY: 80 });
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("2");
 
-    fireEvent.click(screen.getByRole("button", { name: "冻结至当前格" }));
+    fireEvent.click(screen.getByRole("button", { name: "冻结" }));
     expect(screen.getByText("冻结 1 行 / 1 列")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "放大格子" }));
     expect(screen.getByText("110%")).toBeInTheDocument();
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("2");
 
-    fireEvent.click(screen.getByRole("button", { name: "取消冻结" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByText("冻结 0 行 / 0 列")).toBeInTheDocument();
   });
 
@@ -1432,7 +1432,7 @@ describe("App local directory flow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "freeze-cancel.csv" }));
     await waitFor(() => expect(screen.getByText("冻结 2 行 / 2 列")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "取消冻结" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByText("冻结 0 行 / 0 列")).toBeInTheDocument();
 
     file.externalWrite("A,B,C\n7,8,9\n4,5,6");

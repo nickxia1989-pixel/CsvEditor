@@ -503,6 +503,16 @@
 - `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
 - Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` and `skill.csv` opened; after enabling `选区内` on `monster.csv`, switching to `skill.csv` reset the checkbox, closed the result panel, kept the grid at about `948 x 524`, and produced no document horizontal overflow. Scrolling `monster.csv` to `480 / 643` and `skill.csv` to `100 / 180` restored each tab's own viewport when switching back and forth, with 0 console error logs.
 
+## Verification Run - 2026-06-08 Toolbar Wrap Layout
+
+- Toolbar layout: the long horizontal toolbar is now split into compact functional groups and allowed to wrap. Default and minimum sidebar widths show two toolbar rows without horizontal scrolling; maximum sidebar width wraps into shorter rows because the workspace is narrower, still without overlap or horizontal overflow.
+- Button compression: view/color actions use shorter visible labels while keeping descriptive hover titles for the longer meaning.
+- `npm test -- src/App.test.tsx src/components/GridEditor.test.tsx`: 2 files / 110 tests passed.
+- `npm test`: 8 files / 151 tests passed.
+- `npm run build`: passed TypeScript checks and Vite production build.
+- `npm run check:tables`: read-only parsed `D:\2D_AI_WORKING\Tables`, 1154 CSV files, 235915 rows, max 294 columns, UTF-8 1151 / GB18030 3.
+- Browser smoke at `http://127.0.0.1:5173/`: sample `monster.csv` opened; default layout measured `948px` toolbar width, `97px` toolbar height, 2 group rows, 0 toolbar/document horizontal overflow, and about `471px` grid height. Sidebar width checks measured min sidebar `240px` with 2 rows and max sidebar `520px` with no overflow, about `439px` grid height, and 0 console error logs.
+
 ## Current Known Gaps
 
 - Chrome/Edge 原生目录选择弹窗无法在当前自动化环境里直接选择真实目录，仍需要人工点一次目录授权；授权后功能可通过只读 `npm run check:tables` 和浏览器样例流程覆盖主要行为。
