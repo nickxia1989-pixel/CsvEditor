@@ -78,7 +78,7 @@ export type TreeNode = {
   loading?: boolean;
   expanded?: boolean;
   error?: string;
-  directoryHandle?: import("./lib/fileRefs").BrowserDirectoryHandle;
+  directoryHandle?: import("./lib/fileRefs").DirectoryHandle;
   fileRef?: CsvFileRef;
 };
 

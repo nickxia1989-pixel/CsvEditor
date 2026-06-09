@@ -38,6 +38,12 @@ const BACKGROUND_COLOR_PRESETS = ["#ffffff", "#fff3bf", "#dff0ee", "#eaf3ff"];
 
 type GridEditorProps = {
   tab: CsvTab;
+  dirtyCount: number;
+  selectedStats: string;
+  notice: {
+    tone: "info" | "success" | "warning" | "error";
+    message: string;
+  } | null;
   onSelectionChange(selection: CsvSelection): void;
   onSetCell(row: number, col: number, value: string): void;
   onPaste(startRow: number, startCol: number, values: string[][]): void;
@@ -91,6 +97,9 @@ type EditingCell = {
 
 export function GridEditor({
   tab,
+  dirtyCount,
+  selectedStats,
+  notice,
   onSelectionChange,
   onSetCell,
   onPaste,
@@ -128,7 +137,7 @@ export function GridEditor({
   const viewportFrameRef = useRef<number | null>(null);
   const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
   const composingInputRef = useRef(false);
-  const suppressNextSelectionScrollRef = useRef(false);
+  const pendingSelectionScrollRef = useRef(false);
   const pendingGridFocusRef = useRef(false);
   const [viewport, setViewport] = useState<ViewportState>({
     width: 800,
@@ -189,7 +198,6 @@ export function GridEditor({
     }
     const nextScrollTop = clamp(scrollPosition.scrollTop, 0, Math.max(0, totalHeight - element.clientHeight));
     const nextScrollLeft = clamp(scrollPosition.scrollLeft, 0, Math.max(0, totalWidth - element.clientWidth));
-    suppressNextSelectionScrollRef.current = true;
     element.scrollTop = nextScrollTop;
     element.scrollLeft = nextScrollLeft;
     const nextViewport = {
@@ -294,10 +302,10 @@ export function GridEditor({
     if (!viewportElement) {
       return;
     }
-    if (suppressNextSelectionScrollRef.current) {
-      suppressNextSelectionScrollRef.current = false;
+    if (!pendingSelectionScrollRef.current) {
       return;
     }
+    pendingSelectionScrollRef.current = false;
     const selectedLeft = rowHeaderWidth + colOffsets[tab.selection.focusCol];
     const selectedRight = rowHeaderWidth + colOffsets[tab.selection.focusCol + 1];
     const selectedTop = headerHeight + tab.selection.focusRow * rowHeight;
@@ -552,9 +560,14 @@ export function GridEditor({
     updateDragSelection(row, col);
   };
 
+  const requestSelectionScroll = () => {
+    pendingSelectionScrollRef.current = true;
+  };
+
   const setSelectionFocus = (row: number, col: number, extend: boolean) => {
     const nextRow = clamp(row, 0, rowCount - 1);
     const nextCol = clamp(col, 0, maxCols - 1);
+    requestSelectionScroll();
     onSelectionChange(
       extend
         ? { ...tab.selection, focusRow: nextRow, focusCol: nextCol }
@@ -749,6 +762,7 @@ export function GridEditor({
     commitEditing(false);
     if (nextIndex >= 0) {
       const result = findResults[nextIndex];
+      requestSelectionScroll();
       onSelectionChange(singleCellSelection(result.row, result.col));
     } else if (findAvailable) {
       onSetStatus(findInSelection ? "选区内没有匹配内容" : "没有匹配内容");
@@ -786,7 +800,6 @@ export function GridEditor({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      suppressNextSelectionScrollRef.current = true;
       onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
       onSetStatus("已全选已用区域");
       return;
@@ -995,7 +1008,6 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         commitEditing(false);
-        suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: realEndRow, anchorCol: col, focusRow: 0, focusCol: col });
         focusGridInput();
       }}
@@ -1031,7 +1043,6 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         commitEditing(false);
-        suppressNextSelectionScrollRef.current = true;
         onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
         focusGridInput();
       }}
@@ -1081,9 +1092,21 @@ export function GridEditor({
           }
           event.preventDefault();
           commitEditing(false);
-          dragAnchorRef.current = { row, col };
+          const anchor = event.shiftKey
+            ? { row: tab.selection.anchorRow, col: tab.selection.anchorCol }
+            : { row, col };
+          dragAnchorRef.current = anchor;
           setDragging(true);
-          onSelectionChange(singleCellSelection(row, col));
+          onSelectionChange(
+            event.shiftKey
+              ? {
+                  anchorRow: anchor.row,
+                  anchorCol: anchor.col,
+                  focusRow: row,
+                  focusCol: col
+                }
+              : singleCellSelection(row, col)
+          );
           focusGridInput();
         }}
         onPointerEnter={() => {
@@ -1149,20 +1172,6 @@ export function GridEditor({
 
   return (
     <section className="grid-shell">
-      <div className="formula-bar">
-        <span className="cell-name">{selectedLabel}</span>
-        <input
-          value={selectedValue}
-          onChange={(event) => {
-            clearCopiedState();
-            onSetCell(tab.selection.focusRow, tab.selection.focusCol, event.target.value);
-          }}
-          disabled={selectedLocked}
-          aria-label="Selected cell value"
-        />
-        <span className={`lock-state ${selectedLocked ? "locked" : ""}`}>{selectedLocked ? "已锁定" : "可编辑"}</span>
-      </div>
-
       <div className="grid-tools">
         <div className="tool-group history-tools">
           <button
@@ -1390,6 +1399,20 @@ export function GridEditor({
         </div>
       </div>
 
+      <div className="formula-bar">
+        <span className="cell-name">{selectedLabel}</span>
+        <textarea
+          value={selectedValue}
+          onChange={(event) => {
+            clearCopiedState();
+            onSetCell(tab.selection.focusRow, tab.selection.focusCol, event.target.value);
+          }}
+          disabled={selectedLocked}
+          aria-label="Selected cell value"
+        />
+        <span className={`lock-state ${selectedLocked ? "locked" : ""}`}>{selectedLocked ? "已锁定" : "可编辑"}</span>
+      </div>
+
       {findPanelOpen && findAvailable ? (
         <div className="find-results-panel" aria-label="查找结果">
           <div className="find-results-summary">
@@ -1410,6 +1433,7 @@ export function GridEditor({
                   className={`find-result ${activeFindResultIndex === index ? "active" : ""}`}
                   onClick={() => {
                     commitEditing(false);
+                    requestSelectionScroll();
                     onSelectionChange(singleCellSelection(result.row, result.col));
                     focusGridInputSoon();
                   }}
@@ -1509,7 +1533,6 @@ export function GridEditor({
             onPointerDown={(event) => {
               event.preventDefault();
               commitEditing(false);
-              suppressNextSelectionScrollRef.current = true;
               onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
               onSetStatus("已全选已用区域");
               focusGridInput();
@@ -1528,12 +1551,15 @@ export function GridEditor({
       </div>
 
       <div className="grid-status">
+        <span className={dirtyCount > 0 ? "status-warning" : ""}>未保存 {dirtyCount}</span>
+        <span>{selectedStats}</span>
         <span>
           {tab.data.length} 行 / {maxColumnCount(tab.data)} 列
         </span>
         <span>选区 {selectionRange.endRow - selectionRange.startRow + 1} x {selectionRange.endCol - selectionRange.startCol + 1}</span>
         <span>冻结 {tab.freezeRows} 行 / {tab.freezeCols} 列</span>
         <span>{tab.status ?? "就绪"}</span>
+        {notice ? <span className={`notice ${notice.tone}`}>{notice.message}</span> : null}
       </div>
     </section>
   );

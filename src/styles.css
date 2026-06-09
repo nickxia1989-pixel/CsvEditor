@@ -30,8 +30,10 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
+  -webkit-app-region: no-drag;
 }
 
 button {
@@ -93,6 +95,7 @@ button {
 .pane-title {
   padding: 13px 14px 10px;
   border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
 }
 
 .pane-title h1 {
@@ -111,9 +114,14 @@ button {
 
 .directory-actions {
   display: grid;
-  grid-template-columns: 1fr 86px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   padding: 10px 10px 7px;
+  -webkit-app-region: no-drag;
+}
+
+.directory-actions .primary-button {
+  grid-column: 1 / -1;
 }
 
 .primary-button,
@@ -180,6 +188,7 @@ button:disabled {
   border-radius: 6px;
   background: var(--panel);
   color: var(--text-soft);
+  -webkit-app-region: no-drag;
 }
 
 .search-box input {
@@ -199,6 +208,7 @@ button:disabled {
   padding: 0 8px 12px;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  -webkit-app-region: no-drag;
 }
 
 .tree-canvas {
@@ -271,7 +281,7 @@ button:disabled {
 
 .workspace {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -280,10 +290,11 @@ button:disabled {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: stretch;
   border-bottom: 1px solid var(--line);
   background: #f9fbfb;
+  -webkit-app-region: drag;
 }
 
 .tab-strip {
@@ -293,6 +304,7 @@ button:disabled {
   overflow-y: hidden;
   padding: 5px 7px 0;
   gap: 4px;
+  -webkit-app-region: drag;
 }
 
 .empty-tabs {
@@ -316,6 +328,7 @@ button:disabled {
   background: #eaf0f1;
   color: #384a54;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .tab.active {
@@ -355,6 +368,7 @@ button:disabled {
   background: transparent;
   color: inherit;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .tab-close:hover {
@@ -367,6 +381,7 @@ button:disabled {
   gap: 6px;
   padding: 5px 8px;
   border-left: 1px solid var(--line);
+  -webkit-app-region: no-drag;
 }
 
 .toolbar-button {
@@ -387,25 +402,32 @@ button:disabled {
   color: #203038;
 }
 
-.workspace-status {
+.window-controls {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 26px;
-  overflow: hidden;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--text-soft);
-  font-size: 12px;
+  align-items: stretch;
+  border-left: 1px solid var(--line);
+  -webkit-app-region: no-drag;
 }
 
-.workspace-status span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  white-space: nowrap;
+.window-control {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #40525c;
+  cursor: pointer;
+}
+
+.window-control:hover {
+  background: #e8eeee;
+}
+
+.window-control.close:hover {
+  background: #c42b1c;
+  color: #fff;
 }
 
 .notice {
@@ -482,11 +504,11 @@ button:disabled {
 }
 
 .formula-bar {
-  grid-row: 1;
+  grid-row: 2;
 }
 
 .grid-tools {
-  grid-row: 2;
+  grid-row: 1;
 }
 
 .find-results-panel {
@@ -502,29 +524,38 @@ button:disabled {
 }
 
 .formula-bar {
-  padding: 0 7px;
+  align-items: flex-start;
+  min-height: 40px;
+  padding: 5px 7px;
 }
 
 .cell-name {
   display: inline-grid;
   place-items: center;
   min-width: 64px;
-  height: 22px;
+  height: 26px;
   border-right: 1px solid var(--line);
   color: #3a4c56;
   font-weight: 600;
 }
 
-.formula-bar input {
+.formula-bar textarea {
   flex: 1;
   min-width: 0;
-  height: 26px;
+  min-height: 28px;
+  max-height: 220px;
+  padding: 4px 0;
   border: 0;
   outline: 0;
   background: transparent;
+  color: #172026;
+  line-height: 1.45;
+  resize: vertical;
+  overflow: auto;
 }
 
 .lock-state {
+  margin-top: 3px;
   padding: 2px 7px;
   border-radius: 999px;
   background: #e9f4f2;
@@ -1005,17 +1036,26 @@ button:disabled {
 .grid-status {
   min-height: 24px;
   padding: 0 8px;
+  overflow: hidden;
   color: var(--text-soft);
   font-size: 12px;
 }
 
 .grid-status span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
   padding-right: 12px;
   border-right: 1px solid var(--line);
+  white-space: nowrap;
 }
 
 .grid-status span:last-child {
   border-right: 0;
+}
+
+.grid-status .status-warning {
+  color: var(--warning);
 }
 
 .file-prompt {

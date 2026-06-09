@@ -9,11 +9,13 @@ import {
 } from "react";
 import {
   AlertTriangle,
-  CheckCircle2,
+  Maximize2,
+  Minimize2,
+  Minus,
   RefreshCw,
   RotateCcw,
   Save,
-  ShieldAlert
+  X
 } from "lucide-react";
 import { DirectoryPane } from "./components/DirectoryPane";
 import { COMMIT_ACTIVE_EDIT_EVENT, GridEditor } from "./components/GridEditor";
@@ -28,7 +30,24 @@ import {
   writeCell,
   type CsvSourceRow
 } from "./lib/csv";
-import { canPickDirectory, pickDirectory, versionEquals, type CsvFileRef } from "./lib/fileRefs";
+import {
+  canOpenSvnCommit,
+  canOpenSvnUpdate,
+  canControlDesktopWindow,
+  closeDesktopWindow,
+  getDesktopWindowState,
+  canPickDirectory,
+  isDesktopDirectoryHandle,
+  minimizeDesktopWindow,
+  openSvnCommit,
+  openSvnUpdate,
+  pickDirectory,
+  subscribeDesktopWindowState,
+  toggleMaximizeDesktopWindow,
+  versionEquals,
+  type DesktopWindowState,
+  type CsvFileRef
+} from "./lib/fileRefs";
 import {
   deleteColumns,
   deleteRows,
@@ -49,7 +68,6 @@ import {
   hasUnloadedLocalDirectory,
   loadLocalChildren,
   loadLocalDescendants,
-  loadSampleTree,
   mergeLoadedNodeState,
   updateNode
 } from "./lib/tree";
@@ -63,6 +81,7 @@ const SIDEBAR_DEFAULT_WIDTH = 310;
 const SIDEBAR_KEYBOARD_STEP = 20;
 const SIDEBAR_KEYBOARD_LARGE_STEP = 60;
 const DEFAULT_GRID_SCROLL_POSITION: GridScrollPosition = { scrollTop: 0, scrollLeft: 0 };
+const DEFAULT_DESKTOP_WINDOW_STATE: DesktopWindowState = { maximized: false, fullscreen: false };
 
 type Notice = {
   tone: "info" | "success" | "warning" | "error";
@@ -84,6 +103,7 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [activeEditDraftDirty, setActiveEditDraftDirty] = useState(false);
+  const [desktopWindowState, setDesktopWindowState] = useState<DesktopWindowState>(DEFAULT_DESKTOP_WINDOW_STATE);
   const tabsRef = useRef(tabs);
   const activeEditDraftDirtyRef = useRef(activeEditDraftDirty);
   const activeTabIdRef = useRef(activeTabId);
@@ -93,6 +113,9 @@ export function App() {
   const pendingActivatePathRef = useRef<string | null>(null);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const directoryPickerAvailable = canPickDirectory();
+  const svnCommitAvailable = Boolean(root?.directoryHandle && isDesktopDirectoryHandle(root.directoryHandle) && canOpenSvnCommit());
+  const svnUpdateAvailable = Boolean(root?.directoryHandle && isDesktopDirectoryHandle(root.directoryHandle) && canOpenSvnUpdate());
+  const desktopWindowControlsAvailable = canControlDesktopWindow();
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -122,6 +145,25 @@ export function App() {
   useEffect(() => {
     setActiveEditDraftDirty(false);
   }, [activeTabId]);
+
+  useEffect(() => {
+    if (!desktopWindowControlsAvailable) {
+      return undefined;
+    }
+    let cancelled = false;
+    void getDesktopWindowState().then((state) => {
+      if (!cancelled) {
+        setDesktopWindowState(state);
+      }
+    });
+    const unsubscribe = subscribeDesktopWindowState((state) => {
+      setDesktopWindowState(state);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [desktopWindowControlsAvailable]);
 
   const notify = useCallback((tone: NoticeTone, message: string) => {
     setNotice({ tone, message });
@@ -197,14 +239,31 @@ export function App() {
     }
   }, [notify]);
 
-  const handleLoadSample = useCallback(async () => {
+  const handleSvnCommit = useCallback(async () => {
+    if (!root?.directoryHandle || !isDesktopDirectoryHandle(root.directoryHandle)) {
+      notify("warning", "请先在桌面版中选择一个本地目录。");
+      return;
+    }
     try {
-      setRoot(await loadSampleTree());
-      notify("info", "已载入只读样例目录");
+      await openSvnCommit(root.path);
+      notify("info", `已打开 SVN 提交窗口：${root.path}`);
     } catch (error) {
       notify("error", error instanceof Error ? error.message : String(error));
     }
-  }, [notify]);
+  }, [notify, root]);
+
+  const handleSvnUpdate = useCallback(async () => {
+    if (!root?.directoryHandle || !isDesktopDirectoryHandle(root.directoryHandle)) {
+      notify("warning", "请先在桌面版中选择一个本地目录。");
+      return;
+    }
+    try {
+      await openSvnUpdate(root.path);
+      notify("info", `已打开 SVN 更新窗口：${root.path}`);
+    } catch (error) {
+      notify("error", error instanceof Error ? error.message : String(error));
+    }
+  }, [notify, root]);
 
   useEffect(() => {
     const query = treeFilter.trim();
@@ -601,6 +660,10 @@ export function App() {
     [sidebarWidth]
   );
 
+  const handleToggleMaximize = useCallback(async () => {
+    setDesktopWindowState(await toggleMaximizeDesktopWindow());
+  }, []);
+
   return (
     <div
       className={`app-frame ${sidebarResizing ? "resizing-sidebar" : ""}`}
@@ -610,9 +673,12 @@ export function App() {
         root={root}
         filter={treeFilter}
         directoryPickerAvailable={directoryPickerAvailable}
+        svnCommitAvailable={svnCommitAvailable}
+        svnUpdateAvailable={svnUpdateAvailable}
         onFilterChange={setTreeFilter}
         onPickDirectory={handlePickDirectory}
-        onLoadSample={handleLoadSample}
+        onSvnCommit={handleSvnCommit}
+        onSvnUpdate={handleSvnUpdate}
         onToggleDirectory={handleToggleDirectory}
         onOpenFile={handleOpenTreeFile}
       />
@@ -669,16 +735,25 @@ export function App() {
               全部保存
             </button>
           </div>
+          {desktopWindowControlsAvailable ? (
+            <div className="window-controls" aria-label="窗口控制">
+              <button className="window-control" onClick={() => void minimizeDesktopWindow()} title="最小化" aria-label="最小化">
+                <Minus size={15} />
+              </button>
+              <button
+                className="window-control"
+                onClick={() => void handleToggleMaximize()}
+                title={desktopWindowState.maximized ? "还原" : "最大化"}
+                aria-label={desktopWindowState.maximized ? "还原" : "最大化"}
+              >
+                {desktopWindowState.maximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              </button>
+              <button className="window-control close" onClick={() => void closeDesktopWindow()} title="关闭" aria-label="关闭">
+                <X size={16} />
+              </button>
+            </div>
+          ) : null}
         </header>
-
-        <div className="workspace-status">
-          <span>
-            {dirtyCount > 0 ? <ShieldAlert size={14} /> : <CheckCircle2 size={14} />}
-            未保存 {dirtyCount}
-          </span>
-          <span>{selectedStats}</span>
-          {notice ? <span className={`notice ${notice.tone}`}>{notice.message}</span> : null}
-        </div>
 
         <div className={`conflict-banner ${activeTab?.externalChanged ? "" : "empty"}`} aria-hidden={!activeTab?.externalChanged}>
           {activeTab?.externalChanged ? (
@@ -696,6 +771,9 @@ export function App() {
         {activeTab ? (
           <GridEditor
             tab={activeTab}
+            dirtyCount={dirtyCount}
+            selectedStats={selectedStats}
+            notice={notice}
             scrollPosition={activeScrollPosition}
             onScrollPositionChange={rememberTabScrollPosition}
             onSelectionChange={(selection) => updateActiveTab((tab) => ({ ...tab, selection }))}

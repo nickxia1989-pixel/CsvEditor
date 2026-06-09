@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { BrowserDirectoryHandle, BrowserFileHandle } from "./lib/fileRefs";
+import type { BrowserDirectoryHandle, BrowserFileHandle, CsvDesktopApi } from "./lib/fileRefs";
 
 class MockFileHandle implements BrowserFileHandle {
   kind = "file" as const;
@@ -72,9 +72,40 @@ class MockDirectoryHandle implements BrowserDirectoryHandle {
 afterEach(() => {
   vi.restoreAllMocks();
   Reflect.deleteProperty(window, "showDirectoryPicker");
+  Reflect.deleteProperty(window, "csvDesktop");
 });
 
 describe("App local directory flow", () => {
+  it("renders frameless desktop window controls and forwards button actions", async () => {
+    const api: CsvDesktopApi = {
+      pickDirectory: vi.fn(),
+      listDirectory: vi.fn(),
+      readFile: vi.fn(),
+      writeFile: vi.fn(),
+      getVersion: vi.fn(),
+      getWindowState: vi.fn(async () => ({ maximized: false, fullscreen: false })),
+      minimizeWindow: vi.fn(async () => undefined),
+      toggleMaximizeWindow: vi.fn(async () => ({ maximized: true, fullscreen: false })),
+      closeWindow: vi.fn(async () => undefined),
+      onWindowStateChange: vi.fn(() => vi.fn())
+    };
+    Object.defineProperty(window, "csvDesktop", {
+      configurable: true,
+      value: api
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "最小化" }));
+    fireEvent.click(screen.getByRole("button", { name: "最大化" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "还原" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+
+    expect(api.minimizeWindow).toHaveBeenCalledTimes(1);
+    expect(api.toggleMaximizeWindow).toHaveBeenCalledTimes(1);
+    expect(api.closeWindow).toHaveBeenCalledTimes(1);
+  });
+
   it("uses a hidden 5 second hot refresh interval", () => {
     const intervalSpy = vi.spyOn(window, "setInterval");
 

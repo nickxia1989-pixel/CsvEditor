@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
-  Database,
   FileText,
   Folder,
   FolderOpen,
   Loader2,
-  Search
+  RefreshCw,
+  Search,
+  Upload
 } from "lucide-react";
 import type { TreeNode } from "../types";
 
@@ -18,9 +19,12 @@ type DirectoryPaneProps = {
   root: TreeNode | null;
   filter: string;
   directoryPickerAvailable: boolean;
+  svnCommitAvailable: boolean;
+  svnUpdateAvailable: boolean;
   onFilterChange(value: string): void;
   onPickDirectory(): void;
-  onLoadSample(): void;
+  onSvnCommit(): void;
+  onSvnUpdate(): void;
   onToggleDirectory(node: TreeNode): void;
   onOpenFile(node: TreeNode): void;
 };
@@ -29,9 +33,12 @@ export function DirectoryPane({
   root,
   filter,
   directoryPickerAvailable,
+  svnCommitAvailable,
+  svnUpdateAvailable,
   onFilterChange,
   onPickDirectory,
-  onLoadSample,
+  onSvnCommit,
+  onSvnUpdate,
   onToggleDirectory,
   onOpenFile
 }: DirectoryPaneProps) {
@@ -94,9 +101,23 @@ export function DirectoryPane({
           <FolderOpen size={16} />
           选择目录
         </button>
-        <button className="ghost-button" onClick={onLoadSample}>
-          <Database size={16} />
-          样例
+        <button
+          className="ghost-button"
+          onClick={onSvnUpdate}
+          disabled={!svnUpdateAvailable}
+          title={svnUpdateAvailable ? "打开 TortoiseSVN 更新窗口" : "SVN 更新只支持已选择本地目录的桌面版"}
+        >
+          <RefreshCw size={16} />
+          SVN更新
+        </button>
+        <button
+          className="ghost-button"
+          onClick={onSvnCommit}
+          disabled={!svnCommitAvailable}
+          title={svnCommitAvailable ? "打开 TortoiseSVN 提交确认窗口" : "SVN 提交只支持已选择本地目录的桌面版"}
+        >
+          <Upload size={16} />
+          SVN提交
         </button>
       </div>
 

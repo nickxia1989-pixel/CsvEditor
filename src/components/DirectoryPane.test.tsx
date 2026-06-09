@@ -28,9 +28,12 @@ function renderDirectory(root = createLargeRoot(200)) {
     root,
     filter: "",
     directoryPickerAvailable: true,
+    svnCommitAvailable: true,
+    svnUpdateAvailable: true,
     onFilterChange: vi.fn(),
     onPickDirectory: vi.fn(),
-    onLoadSample: vi.fn(),
+    onSvnCommit: vi.fn(),
+    onSvnUpdate: vi.fn(),
     onToggleDirectory: vi.fn(),
     onOpenFile: vi.fn()
   };
@@ -66,5 +69,27 @@ describe("DirectoryPane", () => {
     fireEvent.change(screen.getByPlaceholderText("搜索全部 CSV"), { target: { value: "monster" } });
 
     expect(props.onFilterChange).toHaveBeenCalledWith("monster");
+  });
+
+  it("does not render the sample loader button", () => {
+    renderDirectory();
+
+    expect(screen.queryByRole("button", { name: "样例" })).not.toBeInTheDocument();
+  });
+
+  it("forwards SVN update clicks to the app", () => {
+    const { props } = renderDirectory();
+
+    fireEvent.click(screen.getByRole("button", { name: "SVN更新" }));
+
+    expect(props.onSvnUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards SVN commit clicks to the app", () => {
+    const { props } = renderDirectory();
+
+    fireEvent.click(screen.getByRole("button", { name: "SVN提交" }));
+
+    expect(props.onSvnCommit).toHaveBeenCalledTimes(1);
   });
 });

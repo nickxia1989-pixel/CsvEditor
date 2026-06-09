@@ -1,11 +1,18 @@
-import { makeLocalFileRef, makeSampleFileRef, type BrowserDirectoryHandle } from "./fileRefs";
+import {
+  isDesktopDirectoryHandle,
+  listDesktopDirectory,
+  makeDesktopFileRef,
+  makeLocalFileRef,
+  makeSampleFileRef,
+  type DirectoryHandle
+} from "./fileRefs";
 import type { TreeNode } from "../types";
 
-export function createLocalRoot(handle: BrowserDirectoryHandle): TreeNode {
+export function createLocalRoot(handle: DirectoryHandle): TreeNode {
   return {
-    id: handle.name,
+    id: isDesktopDirectoryHandle(handle) ? handle.path : handle.name,
     name: handle.name,
-    path: handle.name,
+    path: isDesktopDirectoryHandle(handle) ? handle.path : handle.name,
     kind: "directory",
     directoryHandle: handle,
     expanded: true
@@ -16,6 +23,43 @@ export async function loadLocalChildren(node: TreeNode): Promise<TreeNode[]> {
   if (!node.directoryHandle) {
     return [];
   }
+  if (isDesktopDirectoryHandle(node.directoryHandle)) {
+    const entries = await listDesktopDirectory(node.directoryHandle);
+    return sortTreeNodes(
+      entries.flatMap((entry): TreeNode[] => {
+        if (entry.kind === "directory") {
+          return [
+            {
+              id: entry.path,
+              name: entry.name,
+              path: entry.path,
+              kind: "directory",
+              directoryHandle: {
+                source: "desktop",
+                kind: "directory",
+                name: entry.name,
+                path: entry.path
+              },
+              expanded: false
+            }
+          ];
+        }
+        if (entry.name.toLowerCase().endsWith(".csv")) {
+          return [
+            {
+              id: entry.path,
+              name: entry.name,
+              path: entry.path,
+              kind: "file",
+              fileRef: makeDesktopFileRef(entry)
+            }
+          ];
+        }
+        return [];
+      })
+    );
+  }
+
   const children: TreeNode[] = [];
   for await (const [name, handle] of node.directoryHandle.entries()) {
     const path = `${node.path}/${name}`;
@@ -99,7 +143,7 @@ export type SampleManifest = {
 };
 
 export async function loadSampleTree(): Promise<TreeNode> {
-  const response = await fetch("/sample/manifest.json", { cache: "no-store" });
+  const response = await fetch(resolveAppAssetUrl("/sample/manifest.json"), { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`样例目录读取失败: ${response.status}`);
   }
@@ -115,7 +159,7 @@ export async function loadSampleTree(): Promise<TreeNode> {
   };
 
   for (const file of manifest.files) {
-    insertSampleFile(root, file.path.split("/"), file.url);
+    insertSampleFile(root, file.path.split("/"), resolveAppAssetUrl(file.url));
   }
   return root;
 }
@@ -152,6 +196,16 @@ function insertSampleFile(root: TreeNode, parts: string[], url: string): void {
     }
     cursor = next;
   }
+}
+
+function resolveAppAssetUrl(url: string): string {
+  if (/^[a-z]+:/i.test(url)) {
+    return url;
+  }
+  if (typeof window !== "undefined" && window.location.protocol === "file:") {
+    return new URL(url.replace(/^\/+/, ""), window.location.href).toString();
+  }
+  return url;
 }
 
 export function updateNode(root: TreeNode, id: string, updater: (node: TreeNode) => TreeNode): TreeNode {

@@ -31,6 +31,44 @@ export interface BrowserDirectoryHandle {
   entries(): AsyncIterableIterator<[string, BrowserFileHandle | BrowserDirectoryHandle]>;
 }
 
+export type DesktopFileSystemEntry = {
+  kind: "directory" | "file";
+  name: string;
+  path: string;
+};
+
+export type DesktopDirectoryHandle = {
+  source: "desktop";
+  kind: "directory";
+  name: string;
+  path: string;
+};
+
+export type DesktopWindowState = {
+  maximized: boolean;
+  fullscreen: boolean;
+};
+
+export type DirectoryHandle = BrowserDirectoryHandle | DesktopDirectoryHandle;
+
+export type CsvDesktopApi = {
+  pickDirectory(): Promise<DesktopDirectoryHandle>;
+  listDirectory(path: string): Promise<DesktopFileSystemEntry[]>;
+  readFile(path: string): Promise<{
+    data: Uint8Array | ArrayBuffer;
+    version: CsvVersion;
+  }>;
+  writeFile(path: string, data: CsvWritableData): Promise<CsvVersion>;
+  getVersion(path: string): Promise<CsvVersion>;
+  openSvnCommit?(path: string): Promise<void>;
+  openSvnUpdate?(path: string): Promise<void>;
+  getWindowState?(): Promise<DesktopWindowState>;
+  minimizeWindow?(): Promise<void>;
+  toggleMaximizeWindow?(): Promise<DesktopWindowState>;
+  closeWindow?(): Promise<void>;
+  onWindowStateChange?(callback: (state: DesktopWindowState) => void): () => void;
+};
+
 export interface CsvFileRef {
   source: "local" | "sample";
   name: string;
@@ -43,18 +81,100 @@ export interface CsvFileRef {
 
 type DirectoryPickerWindow = Window & {
   showDirectoryPicker?: (options?: { mode?: "read" | "readwrite" }) => Promise<BrowserDirectoryHandle>;
+  csvDesktop?: CsvDesktopApi;
 };
 
 export function canPickDirectory(): boolean {
-  return typeof window !== "undefined" && typeof (window as DirectoryPickerWindow).showDirectoryPicker === "function";
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return Boolean(getDesktopApi() || typeof (window as DirectoryPickerWindow).showDirectoryPicker === "function");
 }
 
-export async function pickDirectory(): Promise<BrowserDirectoryHandle> {
+export async function pickDirectory(): Promise<DirectoryHandle> {
+  const desktop = getDesktopApi();
+  if (desktop) {
+    return desktop.pickDirectory();
+  }
+
   const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
   if (!picker) {
-    throw new Error("当前浏览器不支持目录选择，请使用 Chrome 或 Edge 打开 localhost 页面。");
+    throw new Error("当前环境不支持目录选择，请使用桌面版，或用 Chrome/Edge 打开 localhost 页面。");
   }
   return picker({ mode: "read" });
+}
+
+export function canOpenSvnCommit(): boolean {
+  return Boolean(getDesktopApi()?.openSvnCommit);
+}
+
+export function canOpenSvnUpdate(): boolean {
+  return Boolean(getDesktopApi()?.openSvnUpdate);
+}
+
+export async function openSvnCommit(path: string): Promise<void> {
+  const desktop = getDesktopApi();
+  if (!desktop?.openSvnCommit) {
+    throw new Error("SVN GUI 提交只支持桌面版。");
+  }
+  await desktop.openSvnCommit(path);
+}
+
+export async function openSvnUpdate(path: string): Promise<void> {
+  const desktop = getDesktopApi();
+  if (!desktop?.openSvnUpdate) {
+    throw new Error("SVN GUI 更新只支持桌面版。");
+  }
+  await desktop.openSvnUpdate(path);
+}
+
+export function canControlDesktopWindow(): boolean {
+  const desktop = getDesktopApi();
+  return Boolean(desktop?.getWindowState && desktop.minimizeWindow && desktop.toggleMaximizeWindow && desktop.closeWindow);
+}
+
+export async function getDesktopWindowState(): Promise<DesktopWindowState> {
+  const desktop = getDesktopApi();
+  if (!desktop?.getWindowState) {
+    return { maximized: false, fullscreen: false };
+  }
+  return desktop.getWindowState();
+}
+
+export async function minimizeDesktopWindow(): Promise<void> {
+  const desktop = getDesktopApi();
+  if (!desktop?.minimizeWindow) {
+    return;
+  }
+  await desktop.minimizeWindow();
+}
+
+export async function toggleMaximizeDesktopWindow(): Promise<DesktopWindowState> {
+  const desktop = getDesktopApi();
+  if (!desktop?.toggleMaximizeWindow) {
+    return { maximized: false, fullscreen: false };
+  }
+  return desktop.toggleMaximizeWindow();
+}
+
+export async function closeDesktopWindow(): Promise<void> {
+  const desktop = getDesktopApi();
+  if (!desktop?.closeWindow) {
+    return;
+  }
+  await desktop.closeWindow();
+}
+
+export function subscribeDesktopWindowState(callback: (state: DesktopWindowState) => void): () => void {
+  return getDesktopApi()?.onWindowStateChange?.(callback) ?? (() => undefined);
+}
+
+export function isDesktopDirectoryHandle(handle: DirectoryHandle): handle is DesktopDirectoryHandle {
+  return "source" in handle && handle.source === "desktop";
+}
+
+export async function listDesktopDirectory(handle: DesktopDirectoryHandle): Promise<DesktopFileSystemEntry[]> {
+  return requireDesktopApi().listDirectory(handle.path);
 }
 
 async function ensureWritePermission(handle: BrowserFileHandle): Promise<void> {
@@ -119,6 +239,30 @@ export function makeLocalFileRef(handle: BrowserFileHandle, path: string): CsvFi
   };
 }
 
+export function makeDesktopFileRef(entry: DesktopFileSystemEntry): CsvFileRef {
+  return {
+    source: "local",
+    name: entry.name,
+    path: entry.path,
+    writable: true,
+    async read() {
+      const opened = await requireDesktopApi().readFile(entry.path);
+      const decoded = decodeTextBuffer(toUint8Array(opened.data));
+      return {
+        text: decoded.text,
+        encoding: decoded.encoding,
+        version: opened.version
+      };
+    },
+    async write(data: CsvWritableData) {
+      return requireDesktopApi().writeFile(entry.path, data);
+    },
+    async getVersion() {
+      return requireDesktopApi().getVersion(entry.path);
+    }
+  };
+}
+
 export function makeSampleFileRef(name: string, path: string, url: string): CsvFileRef {
   let loadedVersion: CsvVersion | undefined;
   return {
@@ -150,4 +294,23 @@ export function makeSampleFileRef(name: string, path: string, url: string): CsvF
       };
     }
   };
+}
+
+function getDesktopApi(): CsvDesktopApi | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  return (window as DirectoryPickerWindow).csvDesktop;
+}
+
+function requireDesktopApi(): CsvDesktopApi {
+  const desktop = getDesktopApi();
+  if (!desktop) {
+    throw new Error("桌面文件接口不可用。");
+  }
+  return desktop;
+}
+
+function toUint8Array(data: Uint8Array | ArrayBuffer): Uint8Array {
+  return data instanceof Uint8Array ? data : new Uint8Array(data);
 }

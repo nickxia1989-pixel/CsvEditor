@@ -52,6 +52,9 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
 function createGridProps(tab = createTab()) {
   return {
     tab,
+    dirtyCount: 0,
+    selectedStats: `${tab.name} · ${tab.encoding.toUpperCase()} · ${tab.fileRef.writable ? "可写" : "只读"}`,
+    notice: null,
     onSelectionChange: vi.fn(),
     onSetCell: vi.fn(),
     onPaste: vi.fn(),
@@ -228,6 +231,18 @@ describe("GridEditor editing workflow", () => {
 
     expect(props.onSetCell).toHaveBeenCalledWith(0, 0, "Changed");
     expect(copiedCell).not.toHaveClass("copied");
+  });
+
+  it("renders the tool area before a resizable cell details editor", () => {
+    const { container } = renderGridWithResult();
+    const tools = container.querySelector(".grid-tools");
+    const formulaBar = container.querySelector(".formula-bar");
+    const detailsEditor = screen.getByLabelText("Selected cell value");
+
+    expect(tools).toBeInTheDocument();
+    expect(formulaBar).toBeInTheDocument();
+    expect(tools!.compareDocumentPosition(formulaBar!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(detailsEditor.tagName).toBe("TEXTAREA");
   });
 
   it("clears the copied highlight when a structural edit starts", async () => {
@@ -494,6 +509,21 @@ describe("GridEditor toolbar", () => {
     });
 
     fireEvent.pointerEnter(screen.getByRole("gridcell", { name: "B2" }));
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 0,
+      anchorCol: 0,
+      focusRow: 1,
+      focusCol: 1
+    });
+  });
+
+  it("extends the selection range from the previous anchor with Shift click", () => {
+    const props = renderGrid(createTab({
+      selection: singleCellSelection(0, 0)
+    }));
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }), { shiftKey: true });
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith({
       anchorRow: 0,
@@ -1015,7 +1045,7 @@ describe("GridEditor toolbar", () => {
     });
   });
 
-  it("still scrolls focused cells into view for normal selection changes", async () => {
+  it("scrolls focused cells into view for keyboard navigation", async () => {
     const { props, rerender } = renderGridWithResult(createTab({ selection: singleCellSelection(10, 10) }));
     const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLElement;
     Object.defineProperty(grid, "clientHeight", { configurable: true, value: 96 });
@@ -1023,11 +1053,62 @@ describe("GridEditor toolbar", () => {
     grid.scrollTop = 240;
     grid.scrollLeft = 260;
 
-    rerender(<GridEditor {...props} tab={createTab({ selection: singleCellSelection(0, 0) })} />);
+    fireEvent.keyDown(screen.getByLabelText("Grid keyboard input"), { key: "Home", ctrlKey: true });
+    const keyboardSelection = props.onSelectionChange.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ selection: keyboardSelection })} />);
 
     await waitFor(() => {
       expect(grid.scrollTop).toBe(0);
       expect(grid.scrollLeft).toBe(0);
+    });
+  });
+
+  it("does not scroll away from the current viewport when selecting a frozen cell", async () => {
+    const data = Array.from({ length: 80 }, (_, row) => [`ID-${row}`, `Name-${row}`, `Value-${row}`]);
+    const initialTab = createTab({ data, freezeRows: 2, freezeCols: 1 });
+    const { props, rerender } = renderGridWithResult(initialTab);
+    const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLElement;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 96 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 180 });
+    grid.scrollTop = 900;
+    grid.scrollLeft = 420;
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A2" }));
+    const frozenCellSelection = props.onSelectionChange.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ data, freezeRows: 2, freezeCols: 1, selection: frozenCellSelection })} />);
+
+    await waitFor(() => {
+      expect(grid.scrollTop).toBe(900);
+      expect(grid.scrollLeft).toBe(420);
+    });
+  });
+
+  it("does not scroll when resizing columns after selecting a frozen cell", async () => {
+    const data = Array.from({ length: 80 }, (_, row) => [`ID-${row}`, `Name-${row}`, `Value-${row}`]);
+    const frozenSelection = singleCellSelection(1, 0);
+    const { props, rerender } = renderGridWithResult(createTab({
+      data,
+      freezeRows: 2,
+      freezeCols: 1,
+      selection: frozenSelection
+    }));
+    const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLElement;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 96 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 180 });
+    grid.scrollTop = 900;
+    grid.scrollLeft = 420;
+
+    rerender(<GridEditor {...props} tab={createTab({
+      data,
+      freezeRows: 2,
+      freezeCols: 1,
+      selection: frozenSelection,
+      colWidths: { 0: 320 }
+    })} />);
+
+    await waitFor(() => {
+      expect(grid.scrollTop).toBe(900);
+      expect(grid.scrollLeft).toBe(420);
     });
   });
 

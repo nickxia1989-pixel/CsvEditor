@@ -4,6 +4,24 @@
 
 ## Run
 
+### Desktop app
+
+双击根目录的 `start-desktop.bat` 启动桌面版。脚本会优先打开已打包的：
+
+```text
+release\CSV Workspace Editor\CSV Workspace Editor.exe
+```
+
+如果还没有打包产物，脚本会退回到本地 Electron 启动命令。
+
+生成桌面版：
+
+```powershell
+npm run dist:desktop
+```
+
+桌面版不依赖外部浏览器；它使用内置 Electron 窗口，并通过主进程读写本地 CSV 目录。
+
 ### One-click scripts
 
 双击根目录的 `start-editor.bat` 启动工具并打开浏览器。
@@ -53,6 +71,8 @@ npm run dev
 npm test
 npm run build
 npm run check:tables
+npm run desktop:smoke
+npm run desktop:smoke -- --exe "release\CSV Workspace Editor\CSV Workspace Editor.exe"
 ```
 
 `样例`按钮会打开内置只读样例目录，用于快速检查 UI，不会修改任何外部表格目录。
