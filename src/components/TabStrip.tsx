@@ -1,4 +1,5 @@
 import { AlertTriangle, FileText, X } from "lucide-react";
+import type { WheelEvent as ReactWheelEvent } from "react";
 import type { CsvTab } from "../types";
 
 type TabStripProps = {
@@ -13,8 +14,23 @@ export function TabStrip({ tabs, activeTabId, onActivate, onClose }: TabStripPro
     return <div className="tab-strip empty-tabs">未打开 CSV</div>;
   }
 
+  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    const element = event.currentTarget;
+    if (element.scrollWidth <= element.clientWidth) {
+      return;
+    }
+
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (delta === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    element.scrollLeft += delta;
+  };
+
   return (
-    <div className="tab-strip" role="tablist" aria-label="Open CSV tabs">
+    <div className="tab-strip" role="tablist" aria-label="Open CSV tabs" onWheel={handleWheel}>
       {tabs.map((tab) => (
         <div
           key={tab.id}

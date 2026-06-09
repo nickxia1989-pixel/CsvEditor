@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { DirectoryPane } from "./DirectoryPane";
 import type { TreeNode } from "../types";
@@ -23,19 +24,26 @@ function createLargeRoot(count: number): TreeNode {
   };
 }
 
-function renderDirectory(root = createLargeRoot(200)) {
+function renderDirectory(root = createLargeRoot(200), overrides: Partial<ComponentProps<typeof DirectoryPane>> = {}) {
   const props = {
     root,
     filter: "",
     directoryPickerAvailable: true,
     svnCommitAvailable: true,
     svnUpdateAvailable: true,
+    canReloadActive: true,
+    canSaveActive: true,
+    canSaveAll: true,
     onFilterChange: vi.fn(),
     onPickDirectory: vi.fn(),
     onSvnCommit: vi.fn(),
     onSvnUpdate: vi.fn(),
+    onReloadActive: vi.fn(),
+    onSaveActive: vi.fn(),
+    onSaveAll: vi.fn(),
     onToggleDirectory: vi.fn(),
-    onOpenFile: vi.fn()
+    onOpenFile: vi.fn(),
+    ...overrides
   };
   const result = render(<DirectoryPane {...props} />);
   return { ...result, props };
@@ -91,5 +99,29 @@ describe("DirectoryPane", () => {
     fireEvent.click(screen.getByRole("button", { name: "SVN提交" }));
 
     expect(props.onSvnCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders current file actions in the directory pane", () => {
+    const { props } = renderDirectory();
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部保存" }));
+
+    expect(props.onReloadActive).toHaveBeenCalledTimes(1);
+    expect(props.onSaveActive).toHaveBeenCalledTimes(1);
+    expect(props.onSaveAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables current file actions when the app has no matching operation", () => {
+    renderDirectory(createLargeRoot(3), {
+      canReloadActive: false,
+      canSaveActive: false,
+      canSaveAll: false
+    });
+
+    expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "全部保存" })).toBeDisabled();
   });
 });

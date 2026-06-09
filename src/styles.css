@@ -124,9 +124,17 @@ button {
   grid-column: 1 / -1;
 }
 
+.file-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 10px 9px;
+  -webkit-app-region: no-drag;
+}
+
 .primary-button,
 .ghost-button,
-.toolbar-button,
+.file-action-button,
 .tool-button,
 .icon-button,
 .conflict-banner button {
@@ -149,16 +157,38 @@ button {
 }
 
 .primary-button:hover,
-.toolbar-button.save:not(:disabled):hover {
+.file-action-button.save:not(:disabled):hover {
   background: var(--accent-strong);
 }
 
 .ghost-button:hover,
-.toolbar-button:hover:not(:disabled),
+.file-action-button:hover:not(:disabled),
 .tool-button:hover,
 .icon-button:hover,
 .conflict-banner button:hover {
   background: #edf4f3;
+}
+
+.file-action-button {
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 4px 2px;
+  font-size: 12px;
+}
+
+.file-action-button span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-action-button.save:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 button:disabled {
@@ -290,7 +320,7 @@ button:disabled {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   border-bottom: 1px solid var(--line);
   background: #f9fbfb;
@@ -304,7 +334,8 @@ button:disabled {
   overflow-y: hidden;
   padding: 5px 7px 0;
   gap: 4px;
-  -webkit-app-region: drag;
+  scrollbar-width: thin;
+  -webkit-app-region: no-drag;
 }
 
 .empty-tabs {
@@ -312,14 +343,15 @@ button:disabled {
   padding: 0 14px;
   color: var(--text-soft);
   font-size: 13px;
+  -webkit-app-region: drag;
 }
 
 .tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 220px;
-  min-width: 104px;
+  flex: 0 0 auto;
+  min-width: max-content;
   height: 30px;
   padding: 0 6px 0 9px;
   border: 1px solid transparent;
@@ -338,9 +370,8 @@ button:disabled {
 }
 
 .tab-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  overflow: visible;
   white-space: nowrap;
 }
 
@@ -373,33 +404,6 @@ button:disabled {
 
 .tab-close:hover {
   background: rgba(0, 0, 0, 0.08);
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-left: 1px solid var(--line);
-  -webkit-app-region: no-drag;
-}
-
-.toolbar-button {
-  min-width: 72px;
-  min-height: 28px;
-  padding: 0 9px;
-}
-
-.toolbar-button.save {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-}
-
-.toolbar-button.save:disabled {
-  border-color: var(--line);
-  background: var(--panel);
-  color: #203038;
 }
 
 .window-controls {

@@ -7,6 +7,8 @@ import {
   FolderOpen,
   Loader2,
   RefreshCw,
+  Save,
+  SaveAll,
   Search,
   Upload
 } from "lucide-react";
@@ -21,10 +23,16 @@ type DirectoryPaneProps = {
   directoryPickerAvailable: boolean;
   svnCommitAvailable: boolean;
   svnUpdateAvailable: boolean;
+  canReloadActive: boolean;
+  canSaveActive: boolean;
+  canSaveAll: boolean;
   onFilterChange(value: string): void;
   onPickDirectory(): void;
   onSvnCommit(): void;
   onSvnUpdate(): void;
+  onReloadActive(): void;
+  onSaveActive(): void;
+  onSaveAll(): void;
   onToggleDirectory(node: TreeNode): void;
   onOpenFile(node: TreeNode): void;
 };
@@ -35,10 +43,16 @@ export function DirectoryPane({
   directoryPickerAvailable,
   svnCommitAvailable,
   svnUpdateAvailable,
+  canReloadActive,
+  canSaveActive,
+  canSaveAll,
   onFilterChange,
   onPickDirectory,
   onSvnCommit,
   onSvnUpdate,
+  onReloadActive,
+  onSaveActive,
+  onSaveAll,
   onToggleDirectory,
   onOpenFile
 }: DirectoryPaneProps) {
@@ -118,6 +132,39 @@ export function DirectoryPane({
         >
           <Upload size={16} />
           SVN提交
+        </button>
+      </div>
+
+      <div className="file-actions">
+        <button
+          className="file-action-button"
+          onClick={onReloadActive}
+          disabled={!canReloadActive}
+          title="从磁盘重新读取当前 CSV"
+          aria-label="刷新"
+        >
+          <RefreshCw size={15} />
+          <span>刷新</span>
+        </button>
+        <button
+          className="file-action-button save"
+          onClick={onSaveActive}
+          disabled={!canSaveActive}
+          title="保存当前 CSV"
+          aria-label="保存"
+        >
+          <Save size={15} />
+          <span>保存</span>
+        </button>
+        <button
+          className="file-action-button"
+          onClick={onSaveAll}
+          disabled={!canSaveAll}
+          title="保存所有未保存且可写的 CSV"
+          aria-label="全部保存"
+        >
+          <SaveAll size={15} />
+          <span>全部保存</span>
         </button>
       </div>
 

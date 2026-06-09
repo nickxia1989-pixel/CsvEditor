@@ -14,7 +14,6 @@ import {
   Minus,
   RefreshCw,
   RotateCcw,
-  Save,
   X
 } from "lucide-react";
 import { DirectoryPane } from "./components/DirectoryPane";
@@ -675,10 +674,16 @@ export function App() {
         directoryPickerAvailable={directoryPickerAvailable}
         svnCommitAvailable={svnCommitAvailable}
         svnUpdateAvailable={svnUpdateAvailable}
+        canReloadActive={Boolean(activeTab)}
+        canSaveActive={Boolean(activeTab && (activeTab.dirty || activeEditDraftDirty) && activeTab.fileRef.writable)}
+        canSaveAll={dirtyCount > 0}
         onFilterChange={setTreeFilter}
         onPickDirectory={handlePickDirectory}
         onSvnCommit={handleSvnCommit}
         onSvnUpdate={handleSvnUpdate}
+        onReloadActive={() => activeTabId && runAfterActiveEditCommit(() => void reloadTabFromDisk(activeTabId))}
+        onSaveActive={() => activeTabId && runAfterActiveEditCommit(() => void saveTab(activeTabId))}
+        onSaveAll={() => runAfterActiveEditCommit(() => void saveAllDirtyTabs())}
         onToggleDirectory={handleToggleDirectory}
         onOpenFile={handleOpenTreeFile}
       />
@@ -706,35 +711,6 @@ export function App() {
             onActivate={activateTabAfterEditCommit}
             onClose={closeTabAfterEditCommit}
           />
-          <div className="topbar-actions">
-            <button
-              className="toolbar-button"
-              disabled={!activeTab}
-              onClick={() => activeTabId && runAfterActiveEditCommit(() => void reloadTabFromDisk(activeTabId))}
-              title="从磁盘重新读取当前 CSV"
-            >
-              <RefreshCw size={15} />
-              刷新
-            </button>
-            <button
-              className="toolbar-button save"
-              disabled={!activeTab || (!activeTab.dirty && !activeEditDraftDirty) || !activeTab.fileRef.writable}
-              onClick={() => activeTabId && runAfterActiveEditCommit(() => void saveTab(activeTabId))}
-              title="保存当前 CSV"
-            >
-              <Save size={15} />
-              保存
-            </button>
-            <button
-              className="toolbar-button"
-              disabled={dirtyCount === 0}
-              onClick={() => runAfterActiveEditCommit(() => void saveAllDirtyTabs())}
-              title="保存所有未保存且可写的 CSV"
-            >
-              <Save size={15} />
-              全部保存
-            </button>
-          </div>
           {desktopWindowControlsAvailable ? (
             <div className="window-controls" aria-label="窗口控制">
               <button className="window-control" onClick={() => void minimizeDesktopWindow()} title="最小化" aria-label="最小化">

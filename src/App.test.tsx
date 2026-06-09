@@ -115,6 +115,16 @@ describe("App local directory flow", () => {
     expect(screen.queryByText(/^热刷新/)).not.toBeInTheDocument();
   });
 
+  it("keeps current file actions in the directory pane instead of the topbar", () => {
+    const { container } = render(<App />);
+
+    const directoryPane = container.querySelector(".directory-pane");
+    expect(directoryPane).toContainElement(screen.getByRole("button", { name: "刷新" }));
+    expect(directoryPane).toContainElement(screen.getByRole("button", { name: "保存" }));
+    expect(directoryPane).toContainElement(screen.getByRole("button", { name: "全部保存" }));
+    expect(container.querySelector(".topbar-actions")).not.toBeInTheDocument();
+  });
+
   it("auto refreshes a clean tab when the disk version changes", async () => {
     const intervalSpy = vi.spyOn(window, "setInterval");
     const file = new MockFileHandle("auto-refresh-clean.csv", "A,B\n1,2");

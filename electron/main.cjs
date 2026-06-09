@@ -268,7 +268,10 @@ async function runSmokeTestWhenLoaded(window) {
           throw new Error("选择目录按钮不存在");
         }
         clickElement(pickButton);
-        await waitFor(() => document.querySelector(".tree-row.file")?.textContent?.includes("smoke.csv"), "smoke.csv UI row missing");
+        await waitFor(
+          () => Array.from(document.querySelectorAll(".tree-row.file")).some((row) => row.textContent?.includes("smoke.csv")),
+          "smoke.csv UI row missing"
+        );
         const fileRow = Array.from(document.querySelectorAll(".tree-row.file")).find((row) => row.textContent?.includes("smoke.csv"));
         clickElement(fileRow);
         await waitFor(() => document.querySelector(".grid-cell[aria-label='A1']") && document.querySelector(".formula-bar textarea"), "grid UI missing");
@@ -293,6 +296,18 @@ async function runSmokeTestWhenLoaded(window) {
         setTextAreaValue(detailEditor, "多行\\n详情\\n编辑");
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("未保存 1"), "detail textarea edit not reflected");
         const gridStatusText = document.querySelector(".grid-status")?.textContent ?? "";
+        const extraEntries = entries.filter((entry) => entry.name.startsWith("smoke-tab-"));
+        for (const entry of extraEntries) {
+          const row = Array.from(document.querySelectorAll(".tree-row.file")).find((item) => item.textContent?.includes(entry.name));
+          if (!row) {
+            throw new Error("extra smoke tab row missing: " + entry.name);
+          }
+          clickElement(row);
+          await waitFor(
+            () => Array.from(document.querySelectorAll("[role='tab']")).some((tab) => tab.textContent?.includes(entry.name)),
+            "extra smoke tab not opened: " + entry.name
+          );
+        }
         const buttons = Array.from(document.querySelectorAll("button")).map((button) => ({
           text: button.textContent?.trim() ?? "",
           disabled: button.disabled
@@ -304,6 +319,19 @@ async function runSmokeTestWhenLoaded(window) {
         const topbar = document.querySelector(".topbar");
         const paneTitle = document.querySelector(".pane-title");
         const topbarActions = document.querySelector(".topbar-actions");
+        const fileActions = document.querySelector(".file-actions");
+        const tabStrip = document.querySelector(".tab-strip");
+        const firstTab = document.querySelector(".tab");
+        const firstTabName = document.querySelector(".tab-name");
+        const firstTabStyle = firstTab ? getComputedStyle(firstTab) : null;
+        const firstTabNameStyle = firstTabName ? getComputedStyle(firstTabName) : null;
+        let tabStripWheelLeftAfter = 0;
+        if (tabStrip) {
+          tabStrip.scrollLeft = 0;
+          tabStrip.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 180 }));
+          tabStripWheelLeftAfter = Math.round(tabStrip.scrollLeft);
+          tabStrip.scrollLeft = tabStrip.scrollWidth;
+        }
         const windowControlsRect = document.querySelector(".window-controls")?.getBoundingClientRect();
         const topbarRect = topbar?.getBoundingClientRect();
         const windowState = await api.getWindowState?.();
@@ -318,11 +346,23 @@ async function runSmokeTestWhenLoaded(window) {
           regions: {
             topbar: topbar ? getComputedStyle(topbar).webkitAppRegion : "",
             paneTitle: paneTitle ? getComputedStyle(paneTitle).webkitAppRegion : "",
-            topbarActions: topbarActions ? getComputedStyle(topbarActions).webkitAppRegion : ""
+            topbarActions: topbarActions ? getComputedStyle(topbarActions).webkitAppRegion : "",
+            fileActions: fileActions ? getComputedStyle(fileActions).webkitAppRegion : "",
+            tabStrip: tabStrip ? getComputedStyle(tabStrip).webkitAppRegion : ""
           },
           layout: {
             topbarHeight: topbarRect ? Math.round(topbarRect.height) : 0,
             windowControlsWidth: windowControlsRect ? Math.round(windowControlsRect.width) : 0,
+            hasTopbarActions: Boolean(topbarActions),
+            tabCount: document.querySelectorAll("[role='tab']").length,
+            tabStripClientWidth: tabStrip ? Math.round(tabStrip.clientWidth) : 0,
+            tabStripScrollWidth: tabStrip ? Math.round(tabStrip.scrollWidth) : 0,
+            tabStripWheelLeftAfter,
+            tabStripScrollLeftAfter: tabStrip ? Math.round(tabStrip.scrollLeft) : 0,
+            tabFlexShrink: firstTabStyle?.flexShrink ?? "",
+            tabMaxWidth: firstTabStyle?.maxWidth ?? "",
+            tabNameOverflow: firstTabNameStyle?.overflow ?? "",
+            tabNameTextOverflow: firstTabNameStyle?.textOverflow ?? "",
             toolsAboveFormula: Boolean(toolsRect && formulaRect && toolsRect.top < formulaRect.top),
             detailEditorTag: detailEditor?.tagName ?? "",
             detailEditorResize: detailStyle?.resize ?? "",
@@ -345,18 +385,45 @@ async function runSmokeTestWhenLoaded(window) {
       throw new Error("桌面读写烟测内容不正确。");
     }
     const buttonTexts = result.buttons.map((button) => button.text);
-    if (buttonTexts.includes("样例") || !buttonTexts.includes("SVN更新") || !buttonTexts.includes("SVN提交")) {
+    if (
+      buttonTexts.includes("样例") ||
+      !buttonTexts.includes("SVN更新") ||
+      !buttonTexts.includes("SVN提交") ||
+      !buttonTexts.includes("刷新") ||
+      !buttonTexts.includes("保存") ||
+      !buttonTexts.includes("全部保存")
+    ) {
       throw new Error("桌面左侧操作按钮烟测不正确。");
     }
     const windowControlLabels = result.windowControls.map((control) => control.label);
     if (!windowControlLabels.includes("最小化") || !windowControlLabels.includes("最大化") || !windowControlLabels.includes("关闭")) {
       throw new Error("桌面沉浸式窗口控制按钮烟测不正确。");
     }
-    if (!result.windowState || result.regions.topbar !== "drag" || result.regions.paneTitle !== "drag" || result.regions.topbarActions !== "no-drag") {
+    if (
+      !result.windowState ||
+      result.regions.topbar !== "drag" ||
+      result.regions.paneTitle !== "drag" ||
+      result.regions.fileActions !== "no-drag" ||
+      result.regions.tabStrip !== "no-drag" ||
+      result.regions.topbarActions !== ""
+    ) {
       throw new Error("桌面沉浸式拖拽区域烟测不正确。");
     }
     if (result.layout.topbarHeight <= 0 || result.layout.windowControlsWidth < 120) {
       throw new Error("桌面沉浸式布局烟测不正确。");
+    }
+    if (
+      result.layout.hasTopbarActions ||
+      result.layout.tabCount < 8 ||
+      result.layout.tabStripScrollWidth <= result.layout.tabStripClientWidth ||
+      result.layout.tabStripWheelLeftAfter <= 0 ||
+      result.layout.tabStripScrollLeftAfter <= 0 ||
+      result.layout.tabFlexShrink !== "0" ||
+      result.layout.tabMaxWidth !== "none" ||
+      result.layout.tabNameOverflow !== "visible" ||
+      result.layout.tabNameTextOverflow !== "clip"
+    ) {
+      throw new Error("桌面多页签滚动布局烟测不正确。");
     }
     if (
       !result.layout.workspaceStatusRemoved ||

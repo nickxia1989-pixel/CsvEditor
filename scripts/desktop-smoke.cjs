@@ -22,6 +22,10 @@ async function main() {
   const resultPath = path.join(tempRoot, "result.json");
   const csvPath = path.join(tempRoot, "smoke.csv");
   fs.writeFileSync(csvPath, Buffer.from("\uFEFFA,B\r\n1,2\r\n", "utf8"));
+  for (let index = 0; index < 12; index += 1) {
+    const padded = String(index).padStart(2, "0");
+    fs.writeFileSync(path.join(tempRoot, `smoke-tab-${padded}.csv`), `A,B\r\n${index},${index + 1}\r\n`, "utf8");
+  }
 
   const electronExecutable = args.exe || require("electron");
   const childArgs = args.exe ? [] : [projectRoot];
