@@ -293,6 +293,46 @@ async function runSmokeTestWhenLoaded(window) {
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"), "single selection not reflected");
         pointerDownElement(cellB2, { shiftKey: true });
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "shift selection not reflected");
+        const filterButton = document.querySelector("button[aria-label='筛选 B 列']");
+        if (!filterButton) {
+          throw new Error("column filter button missing");
+        }
+        clickElement(filterButton);
+        await waitFor(() => document.querySelector(".column-filter-popover"), "filter popover missing");
+        const selectAllFilterInput = document.querySelector("input[aria-label='全选当前筛选值']");
+        if (!selectAllFilterInput) {
+          throw new Error("filter select-all input missing");
+        }
+        clickElement(selectAllFilterInput);
+        const applyFilterButton = Array.from(document.querySelectorAll(".column-filter-actions button")).find(
+          (button) => button.textContent?.trim() === "确定"
+        );
+        if (!applyFilterButton) {
+          throw new Error("filter apply button missing");
+        }
+        clickElement(applyFilterButton);
+        await waitFor(
+          () =>
+            !document.querySelector(".grid-cell[aria-label='A2']") &&
+            document.querySelector(".grid-status")?.textContent?.includes("筛选显示 0 行"),
+          "filter did not hide data row"
+        );
+        clickElement(filterButton);
+        await waitFor(() => document.querySelector(".column-filter-popover"), "filter popover missing after active filter");
+        const clearFilterButton = Array.from(document.querySelectorAll(".column-filter-actions button")).find(
+          (button) => button.textContent?.trim() === "清除筛选"
+        );
+        if (!clearFilterButton || clearFilterButton.disabled) {
+          throw new Error("clear filter button missing or disabled");
+        }
+        clickElement(clearFilterButton);
+        await waitFor(() => document.querySelector(".grid-cell[aria-label='A2']"), "filter did not restore data row");
+        const restoredCellA1 = document.querySelector(".grid-cell[aria-label='A1']");
+        const restoredCellB2 = document.querySelector(".grid-cell[aria-label='B2']");
+        pointerDownElement(restoredCellA1);
+        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"), "single selection not restored");
+        pointerDownElement(restoredCellB2, { shiftKey: true });
+        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "shift selection not restored");
         setTextAreaValue(detailEditor, "多行\\n详情\\n编辑");
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("未保存 1"), "detail textarea edit not reflected");
         const gridStatusText = document.querySelector(".grid-status")?.textContent ?? "";

@@ -40,6 +40,7 @@ function createTab(index: number, overrides: Partial<CsvTab> = {}): CsvTab {
     freezeRows: 0,
     freezeCols: 0,
     colWidths: {},
+    columnFilters: {},
     undoStack: [],
     redoStack: [],
     ...overrides

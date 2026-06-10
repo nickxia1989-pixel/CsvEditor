@@ -43,6 +43,7 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
     freezeRows: 0,
     freezeCols: 0,
     colWidths: {},
+    columnFilters: {},
     undoStack: [],
     redoStack: [],
     ...overrides
@@ -58,11 +59,16 @@ function createGridProps(tab = createTab()) {
     onSelectionChange: vi.fn(),
     onSetCell: vi.fn(),
     onPaste: vi.fn(),
+    onPasteCells: vi.fn(),
     onClearRange: vi.fn(),
+    onClearCells: vi.fn(),
     onToggleLock: vi.fn(),
+    onToggleLockCells: vi.fn(),
     onSetZoom: vi.fn(),
     onSetFreeze: vi.fn(),
     onSetColWidth: vi.fn(),
+    onSetColumnFilter: vi.fn(),
+    onClearAllFilters: vi.fn(),
     onSetAutoRefresh: vi.fn(),
     onSetFindQuery: vi.fn(),
     onSetReplaceValue: vi.fn(),
@@ -74,6 +80,7 @@ function createGridProps(tab = createTab()) {
     onReplaceAll: vi.fn(),
     onReplaceFindResults: vi.fn(),
     onApplyCellStyle: vi.fn(),
+    onApplyCellStyleToCells: vi.fn(),
     canUndo: tab.undoStack.length > 0,
     canRedo: tab.redoStack.length > 0,
     onUndo: vi.fn(),
@@ -81,6 +88,7 @@ function createGridProps(tab = createTab()) {
     onSaveRequest: vi.fn(),
     onInsertRows: vi.fn(),
     onDeleteRows: vi.fn(),
+    onDeleteRowsByIndexes: vi.fn(),
     onInsertColumns: vi.fn(),
     onDeleteColumns: vi.fn(),
     onAddRow: vi.fn(),
@@ -389,6 +397,200 @@ describe("GridEditor toolbar", () => {
     expect(props.onReplaceFindResults.mock.calls[0][0]).toEqual([
       expect.objectContaining({ row: 1, col: 1 })
     ]);
+  });
+
+  it("opens an Excel-like column filter menu and applies checked values in sheet order", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Zulu"],
+        ["2", "Alpha"],
+        ["3", "Zulu"]
+      ]
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选 B 列" }));
+
+    const valueLabels = Array.from(document.querySelectorAll(".column-filter-values .column-filter-value")).map(
+      (element) => element.textContent
+    );
+    expect(valueLabels).toEqual(["Zulu", "Alpha"]);
+
+    fireEvent.click(screen.getByLabelText("筛选值 Alpha"));
+    fireEvent.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(props.onSetColumnFilter).toHaveBeenCalledWith(1, ["Zulu"]);
+  });
+
+  it("hides rows that fail an active column filter while keeping original row numbers", () => {
+    const data = [
+      ["ID", "Type"],
+      ["1", "Beast"],
+      ["2", "Plant"],
+      ["3", "Beast"]
+    ];
+
+    renderGrid(createTab({
+      data,
+      columnFilters: { 1: ["Beast"] },
+      selection: singleCellSelection(1, 0)
+    }));
+
+    expect(screen.getByRole("gridcell", { name: "A2" })).toBeInTheDocument();
+    expect(screen.queryByRole("gridcell", { name: "A3" })).not.toBeInTheDocument();
+    expect(screen.getByRole("gridcell", { name: "A4" })).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes("筛选显示 2 行"))).toBeInTheDocument();
+  });
+
+  it("copies only visible rows from a filtered rectangular selection", () => {
+    const clipboardData = createClipboardData();
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Beast"],
+        ["2", "Plant"],
+        ["3", "Beast"]
+      ],
+      columnFilters: { 1: ["Beast"] },
+      selection: {
+        anchorRow: 1,
+        anchorCol: 0,
+        focusRow: 3,
+        focusCol: 1
+      }
+    }));
+
+    fireEvent.copy(screen.getByRole("grid", { name: "CSV grid" }), { clipboardData });
+
+    expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", "1\tBeast\n3\tBeast");
+    expect(props.onSetStatus).toHaveBeenCalledWith("已复制 2 x 2（仅可见）");
+  });
+
+  it("clears only visible cells when Delete runs on a filtered selection", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Beast"],
+        ["2", "Plant"],
+        ["3", "Beast"]
+      ],
+      columnFilters: { 1: ["Beast"] },
+      selection: {
+        anchorRow: 1,
+        anchorCol: 0,
+        focusRow: 3,
+        focusCol: 1
+      }
+    }));
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "Delete" });
+
+    expect(props.onClearRange).not.toHaveBeenCalled();
+    expect(props.onClearCells).toHaveBeenCalledWith([
+      { row: 1, col: 0 },
+      { row: 1, col: 1 },
+      { row: 3, col: 0 },
+      { row: 3, col: 1 }
+    ]);
+  });
+
+  it("pastes into visible rows only when a filtered selection spans hidden rows", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Beast"],
+        ["2", "Plant"],
+        ["3", "Beast"]
+      ],
+      columnFilters: { 1: ["Beast"] },
+      selection: {
+        anchorRow: 1,
+        anchorCol: 0,
+        focusRow: 3,
+        focusCol: 0
+      }
+    }));
+
+    fireEvent.paste(screen.getByRole("grid", { name: "CSV grid" }), {
+      clipboardData: {
+        getData: () => "X\nY"
+      }
+    });
+
+    expect(props.onPaste).not.toHaveBeenCalled();
+    expect(props.onPasteCells).toHaveBeenCalledWith([
+      { row: 1, col: 0, value: "X" },
+      { row: 3, col: 0, value: "Y" }
+    ]);
+  });
+
+  it("does not let locked cells hidden by a filter block visible-only cutting", () => {
+    const clipboardData = createClipboardData();
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Beast"],
+        ["2", "Plant"],
+        ["3", "Beast"]
+      ],
+      columnFilters: { 1: ["Beast"] },
+      lockedCells: ["2:0"],
+      selection: {
+        anchorRow: 1,
+        anchorCol: 0,
+        focusRow: 3,
+        focusCol: 0
+      }
+    }));
+
+    fireEvent.cut(screen.getByRole("grid", { name: "CSV grid" }), { clipboardData });
+
+    expect(props.onSetStatus).not.toHaveBeenCalledWith("选区包含锁定格，不能剪切");
+    expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", "1\n3");
+    expect(props.onClearCells).toHaveBeenCalledWith([
+      { row: 1, col: 0 },
+      { row: 3, col: 0 }
+    ]);
+  });
+
+  it("runs filtered toolbar actions against visible cells and rows only", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Beast"],
+        ["2", "Plant"],
+        ["3", "Beast"]
+      ],
+      columnFilters: { 1: ["Beast"] },
+      selection: {
+        anchorRow: 1,
+        anchorCol: 0,
+        focusRow: 3,
+        focusCol: 1
+      }
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "锁定" }));
+    expect(props.onToggleLock).not.toHaveBeenCalled();
+    expect(props.onToggleLockCells).toHaveBeenCalledWith([
+      { row: 1, col: 0 },
+      { row: 1, col: 1 },
+      { row: 3, col: 0 },
+      { row: 3, col: 1 }
+    ], true);
+
+    fireEvent.click(screen.getByRole("button", { name: "删行" }));
+    expect(props.onDeleteRows).not.toHaveBeenCalled();
+    expect(props.onDeleteRowsByIndexes).toHaveBeenCalledWith([1, 3]);
+
+    fireEvent.change(screen.getByLabelText("文字颜色"), { target: { value: "#1d4ed8" } });
+    expect(props.onApplyCellStyle).not.toHaveBeenCalled();
+    expect(props.onApplyCellStyleToCells).toHaveBeenCalledWith([
+      { row: 1, col: 0 },
+      { row: 1, col: 1 },
+      { row: 3, col: 0 },
+      { row: 3, col: 1 }
+    ], { textColor: "#1d4ed8" });
   });
 
   it("resets selected-range find mode when switching tabs", async () => {
@@ -923,6 +1125,26 @@ describe("GridEditor toolbar", () => {
     const editor = container.querySelector(".cell-editor") as HTMLInputElement;
     fireEvent.pointerDown(editor, { clientX: 82, clientY: 70 });
 
+    expect(props.onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it("captures inline editor pointer drags so fast text selection does not fall back to grid dragging", () => {
+    const { container, props } = renderGridWithResult();
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = container.querySelector(".cell-editor") as HTMLInputElement;
+    const editingCell = screen.getByRole("gridcell", { name: "A1" });
+    const setPointerCapture = vi.fn();
+    Object.defineProperty(editor, "setPointerCapture", {
+      configurable: true,
+      value: setPointerCapture
+    });
+
+    fireEvent.pointerDown(editor, { pointerId: 7, clientX: 120, clientY: 70 });
+    fireEvent.pointerMove(screen.getByRole("grid", { name: "CSV grid" }), { clientX: 12, clientY: 70 });
+
+    expect(editingCell).toHaveClass("editing");
+    expect(setPointerCapture).toHaveBeenCalledWith(7);
     expect(props.onSelectionChange).not.toHaveBeenCalled();
   });
 

@@ -27,6 +27,20 @@ export function deleteRows(data: CsvMatrix, startRow: number, endRow: number): C
   return next.length > 0 ? next : [Array.from({ length: width }, () => "")];
 }
 
+export function deleteRowsByIndexes(data: CsvMatrix, rowIndexes: number[]): CsvMatrix {
+  const width = Math.max(1, maxColumnCount(data));
+  if (data.length === 0) {
+    return [Array.from({ length: width }, () => "")];
+  }
+  const rowsToDelete = normalizeRowIndexes(rowIndexes, data.length);
+  if (rowsToDelete.length === 0) {
+    return data.map((row) => [...row]);
+  }
+  const rowSet = new Set(rowsToDelete);
+  const next = data.filter((_, row) => !rowSet.has(row));
+  return next.length > 0 ? next : [Array.from({ length: width }, () => "")];
+}
+
 export function insertColumns(data: CsvMatrix, atCol: number, count: number): CsvMatrix {
   const colCount = Math.max(1, count);
   const width = maxColumnCount(data);
@@ -82,6 +96,20 @@ export function shiftLockedCellsForDeletedRows(lockedCells: string[], startRow: 
   });
 }
 
+export function shiftLockedCellsForDeletedRowIndexes(lockedCells: string[], rowIndexes: number[]): string[] {
+  const rowsToDelete = normalizeRowIndexes(rowIndexes, Number.MAX_SAFE_INTEGER);
+  const rowSet = new Set(rowsToDelete);
+  return mapLockedCells(lockedCells, ({ row, col }) => {
+    if (rowSet.has(row)) {
+      return null;
+    }
+    return {
+      row: row - countSortedValuesBelow(rowsToDelete, row),
+      col
+    };
+  });
+}
+
 export function shiftLockedCellsForInsertedColumns(lockedCells: string[], atCol: number, count: number): string[] {
   return mapLockedCells(lockedCells, ({ row, col }) => ({
     row,
@@ -108,6 +136,14 @@ export function hasLockedCellInRows(lockedCells: string[], startRow: number, end
   return lockedCells.some((key) => {
     const position = parseCellKey(key);
     return Boolean(position && position.row >= range.start && position.row <= range.end);
+  });
+}
+
+export function hasLockedCellInRowIndexes(lockedCells: string[], rowIndexes: number[]): boolean {
+  const rowSet = new Set(normalizeRowIndexes(rowIndexes, Number.MAX_SAFE_INTEGER));
+  return lockedCells.some((key) => {
+    const position = parseCellKey(key);
+    return Boolean(position && rowSet.has(position.row));
   });
 }
 
@@ -145,6 +181,30 @@ function parseCellKey(key: string): CellPosition | null {
     return null;
   }
   return { row, col };
+}
+
+function normalizeRowIndexes(rowIndexes: number[], maxExclusive: number): number[] {
+  const next = new Set<number>();
+  for (const row of rowIndexes) {
+    if (Number.isInteger(row) && row >= 0 && row < maxExclusive) {
+      next.add(row);
+    }
+  }
+  return [...next].sort((left, right) => left - right);
+}
+
+function countSortedValuesBelow(values: number[], target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (values[mid] < target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
 }
 
 function normalizeRange(start: number, end: number, min: number, max: number): { start: number; end: number } {

@@ -148,6 +148,10 @@ export function matrixToTsv(
     }
     rows.push(values);
   }
+  return rowsToTsv(rows);
+}
+
+export function rowsToTsv(rows: string[][]): string {
   return Papa.unparse(rows, {
     delimiter: "\t",
     newline: "\n"

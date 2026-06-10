@@ -27,6 +27,12 @@ export type FindResultCell = {
   col: number;
 };
 
+export type CsvCellUpdate = FindResultCell & {
+  value: string;
+};
+
+export type CsvColumnFilters = Record<number, string[]>;
+
 export type CsvTab = {
   id: string;
   name: string;
@@ -53,6 +59,7 @@ export type CsvTab = {
   freezeRows: number;
   freezeCols: number;
   colWidths: Record<number, number>;
+  columnFilters: CsvColumnFilters;
   undoStack: CsvTabHistorySnapshot[];
   redoStack: CsvTabHistorySnapshot[];
   status?: string;

@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronUp,
   Columns3,
+  Filter,
   Lock,
   Minus,
   PaintBucket,
@@ -14,16 +15,26 @@ import {
   Search,
   Type,
   Undo2,
-  Unlock
+  Unlock,
+  X
 } from "lucide-react";
 import {
   maxColumnCount,
   matrixToTsv,
   parseTsv,
   readCell,
+  rowsToTsv,
   writeCell
 } from "../lib/csv";
-import type { CsvCellStyle, CsvMatrix, CsvSelection, CsvTab, FindResultCell, GridScrollPosition } from "../types";
+import type {
+  CsvCellStyle,
+  CsvCellUpdate,
+  CsvMatrix,
+  CsvSelection,
+  CsvTab,
+  FindResultCell,
+  GridScrollPosition
+} from "../types";
 import { cellKey, normalizeSelection, singleCellSelection } from "../types";
 
 const ROW_HEADER_WIDTH = 56;
@@ -47,11 +58,16 @@ type GridEditorProps = {
   onSelectionChange(selection: CsvSelection): void;
   onSetCell(row: number, col: number, value: string): void;
   onPaste(startRow: number, startCol: number, values: string[][]): void;
+  onPasteCells(updates: CsvCellUpdate[]): void;
   onClearRange(startRow: number, startCol: number, endRow: number, endCol: number): void;
+  onClearCells(cells: FindResultCell[]): void;
   onToggleLock(startRow: number, startCol: number, endRow: number, endCol: number, locked: boolean): void;
+  onToggleLockCells(cells: FindResultCell[], locked: boolean): void;
   onSetZoom(zoom: number): void;
   onSetFreeze(rows: number, cols: number): void;
   onSetColWidth(col: number, width: number): void;
+  onSetColumnFilter(col: number, selectedValues: string[] | null): void;
+  onClearAllFilters(): void;
   onSetAutoRefresh(enabled: boolean): void;
   onSetFindQuery(query: string): void;
   onSetReplaceValue(value: string): void;
@@ -69,6 +85,7 @@ type GridEditorProps = {
     endCol: number,
     stylePatch: Partial<CsvCellStyle>
   ): void;
+  onApplyCellStyleToCells(cells: FindResultCell[], stylePatch: Partial<CsvCellStyle>): void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo(): void;
@@ -76,6 +93,7 @@ type GridEditorProps = {
   onSaveRequest(): void;
   onInsertRows(startRow: number, endRow: number): void;
   onDeleteRows(startRow: number, endRow: number): void;
+  onDeleteRowsByIndexes(rows: number[]): void;
   onInsertColumns(startCol: number, endCol: number): void;
   onDeleteColumns(startCol: number, endCol: number): void;
   onAddRow(): void;
@@ -95,6 +113,24 @@ type EditingCell = {
   value: string;
 } | null;
 
+type CopiedRange = ReturnType<typeof normalizeSelection> & {
+  rows?: number[];
+};
+
+type FilterMenuState = {
+  col: number;
+  left: number;
+  top: number;
+  search: string;
+  draftSelectedValues: string[];
+};
+
+type FilterValueOption = {
+  value: string;
+  label: string;
+  count: number;
+};
+
 export function GridEditor({
   tab,
   dirtyCount,
@@ -103,11 +139,16 @@ export function GridEditor({
   onSelectionChange,
   onSetCell,
   onPaste,
+  onPasteCells,
   onClearRange,
+  onClearCells,
   onToggleLock,
+  onToggleLockCells,
   onSetZoom,
   onSetFreeze,
   onSetColWidth,
+  onSetColumnFilter,
+  onClearAllFilters,
   onSetAutoRefresh,
   onSetFindQuery,
   onSetReplaceValue,
@@ -119,6 +160,7 @@ export function GridEditor({
   onReplaceAll,
   onReplaceFindResults,
   onApplyCellStyle,
+  onApplyCellStyleToCells,
   canUndo,
   canRedo,
   onUndo,
@@ -126,6 +168,7 @@ export function GridEditor({
   onSaveRequest,
   onInsertRows,
   onDeleteRows,
+  onDeleteRowsByIndexes,
   onInsertColumns,
   onDeleteColumns,
   onAddRow,
@@ -154,13 +197,15 @@ export function GridEditor({
     startX: number;
     startWidth: number;
   } | null>(null);
-  const [copiedRange, setCopiedRange] = useState<ReturnType<typeof normalizeSelection> | null>(null);
+  const [copiedRange, setCopiedRange] = useState<CopiedRange | null>(null);
+  const [filterMenu, setFilterMenu] = useState<FilterMenuState | null>(null);
   const copiedTextRef = useRef<string | null>(null);
   const clipboardEventSerialRef = useRef(0);
 
   useEffect(() => {
     setFindPanelOpen(false);
     setFindInSelection(false);
+    setFilterMenu(null);
   }, [tab.id]);
 
   const selectionRange = normalizeSelection(tab.selection);
@@ -168,6 +213,43 @@ export function GridEditor({
   const lockedSet = useMemo(() => new Set(tab.lockedCells), [tab.lockedCells]);
   const maxCols = Math.max(20, maxColumnCount(tab.data) + 4);
   const rowCount = Math.max(40, tab.data.length + 12);
+  const columnFilterEntries = useMemo(
+    () =>
+      Object.entries(tab.columnFilters)
+        .map(([colText, values]) => ({
+          col: Number(colText),
+          values: new Set(values)
+        }))
+        .filter((entry) => Number.isInteger(entry.col) && entry.col >= 0),
+    [tab.columnFilters]
+  );
+  const hasActiveFilters = columnFilterEntries.length > 0;
+  const displayRows = useMemo(() => {
+    if (!hasActiveFilters) {
+      return null;
+    }
+    const rows: number[] = [];
+    if (tab.data.length > 0) {
+      rows.push(0);
+    }
+    for (let row = 1; row < tab.data.length; row += 1) {
+      if (rowPassesColumnFilters(tab.data, row, columnFilterEntries)) {
+        rows.push(row);
+      }
+    }
+    const appendedRows = Math.max(12, 40 - rows.length);
+    for (let row = tab.data.length; row < tab.data.length + appendedRows; row += 1) {
+      rows.push(row);
+    }
+    return rows.length > 0 ? rows : [0];
+  }, [columnFilterEntries, hasActiveFilters, tab.data]);
+  const displayRowCount = displayRows ? displayRows.length : rowCount;
+  const rowDisplayIndexMap = useMemo(() => {
+    if (!displayRows) {
+      return null;
+    }
+    return new Map(displayRows.map((row, index) => [row, index]));
+  }, [displayRows]);
   const rowHeight = Math.round(DEFAULT_ROW_HEIGHT * tab.zoom);
   const headerHeight = Math.round(COLUMN_HEADER_HEIGHT * tab.zoom);
   const rowHeaderWidth = Math.round(ROW_HEADER_WIDTH * tab.zoom);
@@ -189,7 +271,7 @@ export function GridEditor({
   }, [colWidths, maxCols]);
 
   const totalWidth = rowHeaderWidth + colOffsets[maxCols];
-  const totalHeight = headerHeight + rowCount * rowHeight;
+  const totalHeight = headerHeight + displayRowCount * rowHeight;
 
   useLayoutEffect(() => {
     const element = viewportRef.current;
@@ -297,6 +379,37 @@ export function GridEditor({
     };
   }, [dragging]);
 
+  const getDisplayIndexForRow = (row: number) => {
+    if (!rowDisplayIndexMap) {
+      return clamp(row, 0, displayRowCount - 1);
+    }
+    return rowDisplayIndexMap.get(row) ?? -1;
+  };
+
+  const getRowAtDisplayIndex = (index: number) => {
+    const nextIndex = clamp(index, 0, displayRowCount - 1);
+    return displayRows ? displayRows[nextIndex] ?? displayRows[displayRows.length - 1] ?? 0 : nextIndex;
+  };
+
+  const isRowVisible = (row: number) => !rowDisplayIndexMap || rowDisplayIndexMap.has(row);
+
+  const getRowTop = (row: number) => {
+    const displayIndex = getDisplayIndexForRow(row);
+    return headerHeight + Math.max(0, displayIndex) * rowHeight;
+  };
+
+  const getNearestVisibleRow = (row: number) => {
+    if (!displayRows) {
+      return clamp(row, 0, rowCount - 1);
+    }
+    const exactIndex = rowDisplayIndexMap?.get(row);
+    if (exactIndex !== undefined) {
+      return row;
+    }
+    const insertionIndex = findFirstSortedIndexAtLeast(displayRows, row);
+    return displayRows[insertionIndex] ?? displayRows[insertionIndex - 1] ?? 0;
+  };
+
   useEffect(() => {
     const viewportElement = viewportRef.current;
     if (!viewportElement) {
@@ -306,9 +419,13 @@ export function GridEditor({
       return;
     }
     pendingSelectionScrollRef.current = false;
+    const selectedDisplayIndex = getDisplayIndexForRow(tab.selection.focusRow);
+    if (selectedDisplayIndex < 0) {
+      return;
+    }
     const selectedLeft = rowHeaderWidth + colOffsets[tab.selection.focusCol];
     const selectedRight = rowHeaderWidth + colOffsets[tab.selection.focusCol + 1];
-    const selectedTop = headerHeight + tab.selection.focusRow * rowHeight;
+    const selectedTop = headerHeight + selectedDisplayIndex * rowHeight;
     const selectedBottom = selectedTop + rowHeight;
 
     if (selectedLeft < viewportElement.scrollLeft + rowHeaderWidth) {
@@ -322,24 +439,24 @@ export function GridEditor({
     } else if (selectedBottom > viewportElement.scrollTop + viewportElement.clientHeight) {
       viewportElement.scrollTop = selectedBottom - viewportElement.clientHeight;
     }
-  }, [colOffsets, headerHeight, rowHeaderWidth, rowHeight, tab.selection.focusCol, tab.selection.focusRow]);
+  }, [colOffsets, headerHeight, rowDisplayIndexMap, rowHeaderWidth, rowHeight, tab.selection.focusCol, tab.selection.focusRow]);
 
   const visibleRows = useMemo(() => {
-    const start = clamp(Math.floor((viewport.scrollTop - headerHeight) / rowHeight) - OVERSCAN, 0, rowCount - 1);
+    const start = clamp(Math.floor((viewport.scrollTop - headerHeight) / rowHeight) - OVERSCAN, 0, displayRowCount - 1);
     const end = clamp(
       Math.ceil((viewport.scrollTop + viewport.height - headerHeight) / rowHeight) + OVERSCAN,
       0,
-      rowCount - 1
+      displayRowCount - 1
     );
     const rows = new Set<number>();
-    for (let row = 0; row < tab.freezeRows && row < rowCount; row += 1) {
-      rows.add(row);
+    for (let displayIndex = 0; displayIndex < tab.freezeRows && displayIndex < displayRowCount; displayIndex += 1) {
+      rows.add(getRowAtDisplayIndex(displayIndex));
     }
-    for (let row = start; row <= end; row += 1) {
-      rows.add(row);
+    for (let displayIndex = start; displayIndex <= end; displayIndex += 1) {
+      rows.add(getRowAtDisplayIndex(displayIndex));
     }
-    return [...rows].sort((left, right) => left - right);
-  }, [headerHeight, rowCount, rowHeight, tab.freezeRows, viewport.height, viewport.scrollTop]);
+    return [...rows].sort((left, right) => getDisplayIndexForRow(left) - getDisplayIndexForRow(right));
+  }, [displayRowCount, displayRows, headerHeight, rowDisplayIndexMap, rowHeight, tab.freezeRows, viewport.height, viewport.scrollTop]);
 
   const visibleCols = useMemo(() => {
     const left = Math.max(0, viewport.scrollLeft - rowHeaderWidth);
@@ -359,25 +476,51 @@ export function GridEditor({
   const selectedLabel = `${columnName(tab.selection.focusCol)}${tab.selection.focusRow + 1}`;
   const selectedLocked = lockedSet.has(cellKey(tab.selection.focusRow, tab.selection.focusCol));
   const selectedStyle = tab.cellStyles[cellKey(tab.selection.focusRow, tab.selection.focusCol)] ?? {};
+  const selectionColumnCount = selectionRange.endCol - selectionRange.startCol + 1;
+  const selectedVisibleRows = useMemo(
+    () => getRowsInSelection(selectionRange.startRow, selectionRange.endRow, displayRows, rowCount),
+    [displayRows, rowCount, selectionRange.endRow, selectionRange.startRow]
+  );
+  const selectedVisibleCells = useMemo(
+    () => buildCellList(selectedVisibleRows, selectionRange.startCol, selectionRange.endCol),
+    [selectedVisibleRows, selectionRange.endCol, selectionRange.startCol]
+  );
+  const selectedVisibleRowCount = selectedVisibleRows.length;
+  const hiddenRowsInSelection = Math.max(0, selectionRange.endRow - selectionRange.startRow + 1 - selectedVisibleRowCount);
   const editingDirty = Boolean(
     editing &&
       !lockedSet.has(cellKey(editing.row, editing.col)) &&
       editing.value !== readCell(tab.data, editing.row, editing.col)
   );
-  const rangeLocked = rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+  const rangeLocked = selectedVisibleCells.some((cell) => lockedSet.has(cellKey(cell.row, cell.col)));
   const findAvailable = tab.findQuery.trim().length > 0;
   const realEndRow = Math.max(0, tab.data.length - 1);
   const realEndCol = Math.max(0, maxColumnCount(tab.data) - 1);
-  const freezeRowCount = clamp(tab.freezeRows, 0, rowCount);
+  const freezeRowCount = clamp(tab.freezeRows, 0, displayRowCount);
   const freezeColCount = clamp(tab.freezeCols, 0, maxCols);
-  const frozenRows = useMemo(() => numberRange(freezeRowCount), [freezeRowCount]);
+  const frozenRows = useMemo(
+    () => numberRange(freezeRowCount).map((displayIndex) => getRowAtDisplayIndex(displayIndex)),
+    [displayRows, displayRowCount, freezeRowCount]
+  );
   const frozenCols = useMemo(() => numberRange(freezeColCount), [freezeColCount]);
-  const bodyRows = useMemo(() => visibleRows.filter((row) => row >= freezeRowCount), [freezeRowCount, visibleRows]);
+  const bodyRows = useMemo(
+    () => visibleRows.filter((row) => getDisplayIndexForRow(row) >= freezeRowCount),
+    [freezeRowCount, rowDisplayIndexMap, visibleRows]
+  );
   const bodyCols = useMemo(() => visibleCols.filter((col) => col >= freezeColCount), [freezeColCount, visibleCols]);
   const frozenWidth = colOffsets[freezeColCount] ?? 0;
   const frozenHeight = freezeRowCount * rowHeight;
   const stickyTopHeight = headerHeight + frozenHeight;
   const stickyLeftWidth = rowHeaderWidth + frozenWidth;
+
+  useEffect(() => {
+    if (!hasActiveFilters || isRowVisible(tab.selection.focusRow)) {
+      return;
+    }
+    const nextRow = getNearestVisibleRow(tab.selection.focusRow);
+    requestSelectionScroll();
+    onSelectionChange(singleCellSelection(nextRow, tab.selection.focusCol));
+  }, [displayRows, hasActiveFilters, onSelectionChange, rowDisplayIndexMap, tab.selection.focusCol, tab.selection.focusRow]);
 
   const clearCopiedState = () => {
     copiedTextRef.current = null;
@@ -522,7 +665,7 @@ export function GridEditor({
     onSelectionChange({
       anchorRow: anchor.row,
       anchorCol: anchor.col,
-      focusRow: clamp(row, 0, rowCount - 1),
+      focusRow: getNearestVisibleRow(row),
       focusCol: clamp(col, 0, maxCols - 1)
     });
   };
@@ -555,17 +698,17 @@ export function GridEditor({
 
     const offsetX = Math.max(0, clientX - rect.left + element.scrollLeft - rowHeaderWidth);
     const offsetY = Math.max(0, clientY - rect.top + element.scrollTop - headerHeight);
-    const row = clamp(Math.floor(offsetY / rowHeight), 0, rowCount - 1);
+    const row = getRowAtDisplayIndex(Math.floor(offsetY / rowHeight));
     const col = clamp(findColumnAtOffset(colOffsets, offsetX), 0, maxCols - 1);
     updateDragSelection(row, col);
   };
 
-  const requestSelectionScroll = () => {
+  function requestSelectionScroll() {
     pendingSelectionScrollRef.current = true;
-  };
+  }
 
   const setSelectionFocus = (row: number, col: number, extend: boolean) => {
-    const nextRow = clamp(row, 0, rowCount - 1);
+    const nextRow = getNearestVisibleRow(row);
     const nextCol = clamp(col, 0, maxCols - 1);
     requestSelectionScroll();
     onSelectionChange(
@@ -576,14 +719,18 @@ export function GridEditor({
   };
 
   const moveSelection = (rowDelta: number, colDelta: number, extend: boolean) => {
-    setSelectionFocus(tab.selection.focusRow + rowDelta, tab.selection.focusCol + colDelta, extend);
+    const nextRow =
+      rowDelta !== 0 && hasActiveFilters
+        ? getRowAtDisplayIndex(getDisplayIndexForRow(tab.selection.focusRow) + rowDelta)
+        : tab.selection.focusRow + rowDelta;
+    setSelectionFocus(nextRow, tab.selection.focusCol + colDelta, extend);
   };
 
   const moveSelectionToUsedEdge = (direction: "up" | "down" | "left" | "right", extend: boolean) => {
     if (direction === "up") {
-      setSelectionFocus(0, tab.selection.focusCol, extend);
+      setSelectionFocus(getFirstVisibleUsedRow(displayRows), tab.selection.focusCol, extend);
     } else if (direction === "down") {
-      setSelectionFocus(realEndRow, tab.selection.focusCol, extend);
+      setSelectionFocus(getLastVisibleUsedRow(displayRows, realEndRow), tab.selection.focusCol, extend);
     } else if (direction === "left") {
       setSelectionFocus(tab.selection.focusRow, 0, extend);
     } else {
@@ -591,7 +738,10 @@ export function GridEditor({
     }
   };
 
-  const pageRowDelta = Math.max(1, Math.floor(Math.max(rowHeight, (viewport.height || 500) - headerHeight) / rowHeight));
+  const pageRowDelta = Math.min(
+    displayRowCount - 1,
+    Math.max(1, Math.floor(Math.max(rowHeight, (viewport.height || 500) - headerHeight) / rowHeight))
+  );
 
   const dataWithEditingDraft = () =>
     editing && !lockedSet.has(cellKey(editing.row, editing.col))
@@ -631,6 +781,9 @@ export function GridEditor({
 
     const results: Array<FindResultCell & { value: string; locked: boolean }> = [];
     for (let row = scope.startRow; row <= scope.endRow; row += 1) {
+      if (hasActiveFilters && !isRowVisible(row)) {
+        continue;
+      }
       for (let col = scope.startCol; col <= scope.endCol; col += 1) {
         const value = readCell(searchableData, row, col);
         if (value.toLowerCase().includes(query)) {
@@ -642,7 +795,9 @@ export function GridEditor({
   }, [
     editing,
     findInSelection,
+    hasActiveFilters,
     lockedSet,
+    rowDisplayIndexMap,
     selectionRange.endCol,
     selectionRange.endRow,
     selectionRange.startCol,
@@ -657,17 +812,20 @@ export function GridEditor({
   const visibleFindResults = findResults.slice(0, 100);
 
   const copySelectionToInternalBuffer = (statusSuffix = "") => {
-    const text = matrixToTsv(
-      tab.data,
-      selectionRange.startRow,
-      selectionRange.startCol,
-      selectionRange.endRow,
-      selectionRange.endCol
-    );
+    const text = hasActiveFilters
+      ? matrixRowsToTsv(tab.data, selectedVisibleRows, selectionRange.startCol, selectionRange.endCol)
+      : matrixToTsv(
+          tab.data,
+          selectionRange.startRow,
+          selectionRange.startCol,
+          selectionRange.endRow,
+          selectionRange.endCol
+        );
     copiedTextRef.current = text;
-    setCopiedRange(selectionRange);
+    setCopiedRange(hasActiveFilters ? { ...selectionRange, rows: selectedVisibleRows } : selectionRange);
+    const copiedRowCount = hasActiveFilters ? selectedVisibleRowCount : selectionRange.endRow - selectionRange.startRow + 1;
     onSetStatus(
-      `已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}${statusSuffix}`
+      `已复制 ${copiedRowCount} x ${selectionColumnCount}${hasActiveFilters ? "（仅可见）" : ""}${statusSuffix}`
     );
     return text;
   };
@@ -678,15 +836,20 @@ export function GridEditor({
     }
     try {
       clearCopiedState();
-      onPaste(
-        selectionRange.startRow,
-        selectionRange.startCol,
-        expandPasteValues(
-          parseTsv(text),
-          selectionRange.endRow - selectionRange.startRow + 1,
-          selectionRange.endCol - selectionRange.startCol + 1
-        )
-      );
+      const parsed = parseTsv(text);
+      if (hasActiveFilters) {
+        onPasteCells(createVisiblePasteUpdates(parsed, selectedVisibleRows, selectionRange, displayRows, rowCount));
+      } else {
+        onPaste(
+          selectionRange.startRow,
+          selectionRange.startCol,
+          expandPasteValues(
+            parsed,
+            selectionRange.endRow - selectionRange.startRow + 1,
+            selectionRange.endCol - selectionRange.startCol + 1
+          )
+        );
+      }
     } catch (error) {
       onSetStatus(error instanceof Error ? error.message : "粘贴内容解析失败");
     }
@@ -694,21 +857,28 @@ export function GridEditor({
 
   const cutSelectionToInternalBuffer = (statusSuffix = "") => {
     clearCopiedState();
-    if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
+    if (selectedVisibleCells.some((cell) => lockedSet.has(cellKey(cell.row, cell.col)))) {
       onSetStatus("选区包含锁定格，不能剪切");
       return;
     }
-    const text = matrixToTsv(
-      tab.data,
-      selectionRange.startRow,
-      selectionRange.startCol,
-      selectionRange.endRow,
-      selectionRange.endCol
-    );
+    const text = hasActiveFilters
+      ? matrixRowsToTsv(tab.data, selectedVisibleRows, selectionRange.startCol, selectionRange.endCol)
+      : matrixToTsv(
+          tab.data,
+          selectionRange.startRow,
+          selectionRange.startCol,
+          selectionRange.endRow,
+          selectionRange.endCol
+        );
     copiedTextRef.current = text;
-    setCopiedRange(selectionRange);
-    onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
-    onSetStatus(`已剪切 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}${statusSuffix}`);
+    setCopiedRange(hasActiveFilters ? { ...selectionRange, rows: selectedVisibleRows } : selectionRange);
+    if (hasActiveFilters) {
+      onClearCells(selectedVisibleCells);
+    } else {
+      onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+    }
+    const cutRowCount = hasActiveFilters ? selectedVisibleRowCount : selectionRange.endRow - selectionRange.startRow + 1;
+    onSetStatus(`已剪切 ${cutRowCount} x ${selectionColumnCount}${hasActiveFilters ? "（仅可见）" : ""}${statusSuffix}`);
   };
 
   const scheduleKeyboardClipboardFallback = (type: "copy" | "paste" | "cut") => {
@@ -740,15 +910,19 @@ export function GridEditor({
   };
 
   const applySelectionStyle = (stylePatch: Partial<CsvCellStyle>) => {
-    runAfterCommittingEditAndClearingCopiedRange(() =>
+    runAfterCommittingEditAndClearingCopiedRange(() => {
+      if (hasActiveFilters) {
+        onApplyCellStyleToCells(selectedVisibleCells, stylePatch);
+        return;
+      }
       onApplyCellStyle(
         selectionRange.startRow,
         selectionRange.startCol,
         selectionRange.endRow,
         selectionRange.endCol,
         stylePatch
-      )
-    );
+      );
+    });
   };
 
   const runFind = (direction: "next" | "previous") => {
@@ -800,8 +974,13 @@ export function GridEditor({
 
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
-      onSetStatus("已全选已用区域");
+      onSelectionChange({
+        anchorRow: getLastVisibleUsedRow(displayRows, realEndRow),
+        anchorCol: realEndCol,
+        focusRow: getFirstVisibleUsedRow(displayRows),
+        focusCol: 0
+      });
+      onSetStatus(hasActiveFilters ? "已全选筛选可见区域" : "已全选已用区域");
       return;
     }
 
@@ -834,7 +1013,11 @@ export function GridEditor({
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
       clearCopiedState();
-      onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+      if (hasActiveFilters) {
+        onClearCells(selectedVisibleCells);
+      } else {
+        onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+      }
       return;
     }
     if (event.key === "Home") {
@@ -958,7 +1141,9 @@ export function GridEditor({
       event.clipboardData.setData("text/plain", text);
     } catch {
       onSetStatus(
-        `已复制 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}（仅编辑器内可粘贴）`
+        `已复制 ${hasActiveFilters ? selectedVisibleRowCount : selectionRange.endRow - selectionRange.startRow + 1} x ${selectionColumnCount}${
+          hasActiveFilters ? "（仅可见）" : ""
+        }（仅编辑器内可粘贴）`
       );
     }
   };
@@ -970,33 +1155,158 @@ export function GridEditor({
     markClipboardEventHandled();
     event.preventDefault();
     clearCopiedState();
-    if (rangeHasLocked(lockedSet, selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol)) {
+    if (selectedVisibleCells.some((cell) => lockedSet.has(cellKey(cell.row, cell.col)))) {
       onSetStatus("选区包含锁定格，不能剪切");
       return;
     }
-    const text = matrixToTsv(
-      tab.data,
-      selectionRange.startRow,
-      selectionRange.startCol,
-      selectionRange.endRow,
-      selectionRange.endCol
-    );
+    const text = hasActiveFilters
+      ? matrixRowsToTsv(tab.data, selectedVisibleRows, selectionRange.startCol, selectionRange.endCol)
+      : matrixToTsv(
+          tab.data,
+          selectionRange.startRow,
+          selectionRange.startCol,
+          selectionRange.endRow,
+          selectionRange.endCol
+        );
     try {
       if (!event.clipboardData) {
         throw new Error("Clipboard event data unavailable");
       }
       event.clipboardData.setData("text/plain", text);
-      onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
-      onSetStatus(`已剪切 ${selectionRange.endRow - selectionRange.startRow + 1} x ${selectionRange.endCol - selectionRange.startCol + 1}`);
+      if (hasActiveFilters) {
+        onClearCells(selectedVisibleCells);
+      } else {
+        onClearRange(selectionRange.startRow, selectionRange.startCol, selectionRange.endRow, selectionRange.endCol);
+      }
+      onSetStatus(
+        `已剪切 ${hasActiveFilters ? selectedVisibleRowCount : selectionRange.endRow - selectionRange.startRow + 1} x ${selectionColumnCount}${
+          hasActiveFilters ? "（仅可见）" : ""
+        }`
+      );
     } catch {
       onSetStatus("剪切失败：浏览器未允许剪贴板写入");
     }
   };
 
+  const openColumnFilterMenu = (col: number, button: HTMLElement) => {
+    const allValues = getColumnFilterOptions(tab.data, col, [], col).map((option) => option.value);
+    const hasColumnFilter = Object.prototype.hasOwnProperty.call(tab.columnFilters, col);
+    const rect = button.getBoundingClientRect();
+    setFilterMenu({
+      col,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)),
+      top: rect.bottom + 5,
+      search: "",
+      draftSelectedValues: hasColumnFilter ? [...tab.columnFilters[col]] : allValues
+    });
+  };
+
+  const filterMenuOptions = useMemo(
+    () =>
+      filterMenu
+        ? getColumnFilterOptions(tab.data, filterMenu.col, columnFilterEntries, filterMenu.col)
+        : [],
+    [columnFilterEntries, filterMenu, tab.data]
+  );
+  const filterMenuAllValues = useMemo(
+    () => (filterMenu ? getColumnFilterOptions(tab.data, filterMenu.col, [], filterMenu.col).map((option) => option.value) : []),
+    [filterMenu, tab.data]
+  );
+  const filterMenuSelectedSet = useMemo(
+    () => new Set(filterMenu?.draftSelectedValues ?? []),
+    [filterMenu?.draftSelectedValues]
+  );
+  const displayedFilterMenuOptions = useMemo(() => {
+    const query = filterMenu?.search.trim().toLowerCase() ?? "";
+    if (!query) {
+      return filterMenuOptions;
+    }
+    return filterMenuOptions.filter((option) => option.label.toLowerCase().includes(query));
+  }, [filterMenu?.search, filterMenuOptions]);
+  const allDisplayedFilterValuesSelected =
+    displayedFilterMenuOptions.length > 0 &&
+    displayedFilterMenuOptions.every((option) => filterMenuSelectedSet.has(option.value));
+
+  const setFilterMenuDraftValues = (updater: (current: Set<string>) => Set<string>) => {
+    setFilterMenu((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        draftSelectedValues: [...updater(new Set(current.draftSelectedValues))]
+      };
+    });
+  };
+
+  const toggleDisplayedFilterValues = () => {
+    const displayedValues = displayedFilterMenuOptions.map((option) => option.value);
+    setFilterMenuDraftValues((current) => {
+      if (displayedValues.length === 0) {
+        return current;
+      }
+      if (displayedValues.every((value) => current.has(value))) {
+        displayedValues.forEach((value) => current.delete(value));
+      } else {
+        displayedValues.forEach((value) => current.add(value));
+      }
+      return current;
+    });
+  };
+
+  const toggleFilterValue = (value: string) => {
+    setFilterMenuDraftValues((current) => {
+      if (current.has(value)) {
+        current.delete(value);
+      } else {
+        current.add(value);
+      }
+      return current;
+    });
+  };
+
+  const applyFilterMenu = () => {
+    if (!filterMenu) {
+      return;
+    }
+    const allowedValues = new Set(filterMenuAllValues);
+    const selectedValues = [...new Set(filterMenu.draftSelectedValues)].filter((value) => allowedValues.has(value));
+    const selectedSet = new Set(selectedValues);
+    const selectedAllValues =
+      filterMenuAllValues.length === selectedValues.length &&
+      filterMenuAllValues.every((value) => selectedSet.has(value));
+    onSetColumnFilter(filterMenu.col, selectedAllValues ? null : selectedValues);
+    setFilterMenu(null);
+  };
+
+  useEffect(() => {
+    if (!filterMenu) {
+      return undefined;
+    }
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".column-filter-popover") || target?.closest(".column-filter-button")) {
+        return;
+      }
+      setFilterMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFilterMenu(null);
+      }
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filterMenu]);
+
   const renderColumnHeader = (col: number, keyPrefix: string, className = "") => (
     <div
       key={`${keyPrefix}-h-${col}`}
-      className={`column-header ${className}`}
+      className={`column-header ${tab.columnFilters[col] !== undefined ? "filtered" : ""} ${className}`}
       role="columnheader"
       aria-label={`Column ${columnName(col)}`}
       style={{
@@ -1008,11 +1318,33 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         commitEditing(false);
-        onSelectionChange({ anchorRow: realEndRow, anchorCol: col, focusRow: 0, focusCol: col });
+        onSelectionChange({
+          anchorRow: getLastVisibleUsedRow(displayRows, realEndRow),
+          anchorCol: col,
+          focusRow: getFirstVisibleUsedRow(displayRows),
+          focusCol: col
+        });
         focusGridInput();
       }}
     >
-      {columnName(col)}
+      <span className="column-label">{columnName(col)}</span>
+      <button
+        type="button"
+        className={`column-filter-button ${tab.columnFilters[col] !== undefined ? "active" : ""}`}
+        title={`筛选 ${columnName(col)} 列`}
+        aria-label={`筛选 ${columnName(col)} 列`}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openColumnFilterMenu(col, event.currentTarget);
+        }}
+      >
+        <Filter size={13} />
+      </button>
       <span
         className="column-resizer"
         onPointerDown={(event) => {
@@ -1036,7 +1368,7 @@ export function GridEditor({
       aria-label={`Row ${row + 1}`}
       style={{
         left: 0,
-        top: headerHeight + row * rowHeight,
+        top: getRowTop(row),
         width: rowHeaderWidth,
         height: rowHeight
       }}
@@ -1066,20 +1398,21 @@ export function GridEditor({
       copiedRange &&
       row >= copiedRange.startRow &&
       row <= copiedRange.endRow &&
+      (!copiedRange.rows || copiedRange.rows.includes(row)) &&
       col >= copiedRange.startCol &&
       col <= copiedRange.endCol;
 
     return (
       <div
         key={`${keyPrefix}-${row}-${col}`}
-        className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${copied ? "copied" : ""} ${
+        className={`grid-cell ${selected ? "selected" : ""} ${focus ? "focus" : ""} ${isEditing ? "editing" : ""} ${copied ? "copied" : ""} ${
           locked ? "locked" : ""
         } ${className}`}
         role="gridcell"
         aria-label={`${columnName(col)}${row + 1}`}
         style={{
           left: rowHeaderWidth + colOffsets[col],
-          top: headerHeight + row * rowHeight,
+          top: getRowTop(row),
           width: colWidths[col],
           height: rowHeight,
           lineHeight: `${rowHeight - 2}px`,
@@ -1129,7 +1462,10 @@ export function GridEditor({
               event.stopPropagation();
               dragAnchorRef.current = null;
               setDragging(false);
+              event.currentTarget.setPointerCapture?.(event.pointerId);
             }}
+            onPointerMove={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
             onDoubleClick={(event) => event.stopPropagation()}
             onChange={(event) => {
               setEditing({ row, col, value: event.target.value });
@@ -1197,13 +1533,19 @@ export function GridEditor({
           <button
             className="tool-button"
             onClick={() =>
-              runAfterCommittingEdit(() => onToggleLock(
-                selectionRange.startRow,
-                selectionRange.startCol,
-                selectionRange.endRow,
-                selectionRange.endCol,
-                !rangeLocked
-              ))
+              runAfterCommittingEdit(() => {
+                if (hasActiveFilters) {
+                  onToggleLockCells(selectedVisibleCells, !rangeLocked);
+                  return;
+                }
+                onToggleLock(
+                  selectionRange.startRow,
+                  selectionRange.startCol,
+                  selectionRange.endRow,
+                  selectionRange.endCol,
+                  !rangeLocked
+                );
+              })
             }
             title={rangeLocked ? "解除选区锁定" : "锁定选区，防止误改"}
           >
@@ -1243,14 +1585,31 @@ export function GridEditor({
         <div className="tool-group structure-tools">
           <button
             className="tool-button"
-            onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onInsertRows(selectionRange.startRow, selectionRange.endRow))}
+            onClick={() =>
+              runAfterCommittingEditAndClearingCopiedRange(() => {
+                if (hasActiveFilters) {
+                  const firstVisibleRow = selectedVisibleRows[0] ?? selectionRange.startRow;
+                  onInsertRows(firstVisibleRow, firstVisibleRow + selectedVisibleRowCount - 1);
+                  return;
+                }
+                onInsertRows(selectionRange.startRow, selectionRange.endRow);
+              })
+            }
           >
             <Plus size={15} />
             插行
           </button>
           <button
             className="tool-button"
-            onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onDeleteRows(selectionRange.startRow, selectionRange.endRow))}
+            onClick={() =>
+              runAfterCommittingEditAndClearingCopiedRange(() => {
+                if (hasActiveFilters) {
+                  onDeleteRowsByIndexes(selectedVisibleRows);
+                  return;
+                }
+                onDeleteRows(selectionRange.startRow, selectionRange.endRow);
+              })
+            }
           >
             <Minus size={15} />
             删行
@@ -1455,6 +1814,87 @@ export function GridEditor({
         </div>
       ) : null}
 
+      {filterMenu ? (
+        <div
+          className="column-filter-popover"
+          role="dialog"
+          aria-label={`筛选 ${columnName(filterMenu.col)} 列`}
+          style={{ left: filterMenu.left, top: filterMenu.top }}
+        >
+          <div className="column-filter-title">
+            <span>{columnName(filterMenu.col)} 列筛选</span>
+            <button className="icon-button" onClick={() => setFilterMenu(null)} title="关闭筛选" aria-label="关闭筛选">
+              <X size={14} />
+            </button>
+          </div>
+          <label className="column-filter-search">
+            <Search size={14} />
+            <input
+              value={filterMenu.search}
+              onChange={(event) => setFilterMenu((current) => (current ? { ...current, search: event.target.value } : current))}
+              placeholder="搜索值"
+              aria-label="搜索筛选值"
+            />
+          </label>
+          <label className="column-filter-option select-all">
+            <input
+              type="checkbox"
+              checked={allDisplayedFilterValuesSelected}
+              disabled={displayedFilterMenuOptions.length === 0}
+              onChange={toggleDisplayedFilterValues}
+              aria-label="全选当前筛选值"
+            />
+            <span>全选</span>
+            <span className="column-filter-count">{displayedFilterMenuOptions.length}</span>
+          </label>
+          <div className="column-filter-values">
+            {displayedFilterMenuOptions.length > 0 ? (
+              displayedFilterMenuOptions.map((option) => (
+                <label className="column-filter-option" key={option.value}>
+                  <input
+                    type="checkbox"
+                    checked={filterMenuSelectedSet.has(option.value)}
+                    onChange={() => toggleFilterValue(option.value)}
+                    aria-label={`筛选值 ${option.label}`}
+                  />
+                  <span className="column-filter-value" title={option.label}>
+                    {option.label}
+                  </span>
+                  <span className="column-filter-count">{option.count}</span>
+                </label>
+              ))
+            ) : (
+              <span className="column-filter-empty">没有可选值</span>
+            )}
+          </div>
+          <div className="column-filter-actions">
+            <button
+              className="tool-button"
+              onClick={() => {
+                onSetColumnFilter(filterMenu.col, null);
+                setFilterMenu(null);
+              }}
+              disabled={tab.columnFilters[filterMenu.col] === undefined}
+            >
+              清除筛选
+            </button>
+            <button
+              className="tool-button"
+              onClick={() => {
+                onClearAllFilters();
+                setFilterMenu(null);
+              }}
+              disabled={!hasActiveFilters}
+            >
+              全部清除
+            </button>
+            <button className="tool-button primary-filter-action" onClick={applyFilterMenu}>
+              确定
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div
         className="grid-viewport"
         role="grid"
@@ -1533,8 +1973,13 @@ export function GridEditor({
             onPointerDown={(event) => {
               event.preventDefault();
               commitEditing(false);
-              onSelectionChange({ anchorRow: realEndRow, anchorCol: realEndCol, focusRow: 0, focusCol: 0 });
-              onSetStatus("已全选已用区域");
+              onSelectionChange({
+                anchorRow: getLastVisibleUsedRow(displayRows, realEndRow),
+                anchorCol: realEndCol,
+                focusRow: getFirstVisibleUsedRow(displayRows),
+                focusCol: 0
+              });
+              onSetStatus(hasActiveFilters ? "已全选筛选可见区域" : "已全选已用区域");
               focusGridInput();
             }}
           />
@@ -1555,8 +2000,12 @@ export function GridEditor({
         <span>{selectedStats}</span>
         <span>
           {tab.data.length} 行 / {maxColumnCount(tab.data)} 列
+          {hasActiveFilters ? ` / 筛选显示 ${Math.max(0, displayRows!.filter((row) => row < tab.data.length).length - 1)} 行` : ""}
         </span>
-        <span>选区 {selectionRange.endRow - selectionRange.startRow + 1} x {selectionRange.endCol - selectionRange.startCol + 1}</span>
+        <span>
+          选区 {hasActiveFilters ? selectedVisibleRowCount : selectionRange.endRow - selectionRange.startRow + 1} x {selectionColumnCount}
+          {hasActiveFilters && hiddenRowsInSelection > 0 ? `（隐藏 ${hiddenRowsInSelection} 行）` : ""}
+        </span>
         <span>冻结 {tab.freezeRows} 行 / {tab.freezeCols} 列</span>
         <span>{tab.status ?? "就绪"}</span>
         {notice ? <span className={`notice ${notice.tone}`}>{notice.message}</span> : null}
@@ -1611,6 +2060,178 @@ function expandPasteValues(values: string[][], targetRows: number, targetCols: n
   );
 }
 
+function matrixRowsToTsv(data: CsvMatrix, rows: number[], startCol: number, endCol: number): string {
+  return rowsToTsv(
+    rows.map((row) => {
+      const values: string[] = [];
+      for (let col = startCol; col <= endCol; col += 1) {
+        values.push(readCell(data, row, col));
+      }
+      return values;
+    })
+  );
+}
+
+function getRowsInSelection(
+  startRow: number,
+  endRow: number,
+  displayRows: number[] | null,
+  rowCount: number
+): number[] {
+  if (displayRows) {
+    return displayRows.filter((row) => row >= startRow && row <= endRow);
+  }
+  const rows: number[] = [];
+  const start = clamp(startRow, 0, rowCount - 1);
+  const end = clamp(endRow, 0, rowCount - 1);
+  for (let row = start; row <= end; row += 1) {
+    rows.push(row);
+  }
+  return rows;
+}
+
+function buildCellList(rows: number[], startCol: number, endCol: number): FindResultCell[] {
+  const cells: FindResultCell[] = [];
+  for (const row of rows) {
+    for (let col = startCol; col <= endCol; col += 1) {
+      cells.push({ row, col });
+    }
+  }
+  return cells;
+}
+
+function createVisiblePasteUpdates(
+  values: string[][],
+  selectedRows: number[],
+  selectionRange: ReturnType<typeof normalizeSelection>,
+  displayRows: number[] | null,
+  rowCount: number
+): CsvCellUpdate[] {
+  const sourceRows = values.length;
+  const sourceCols = values.reduce((max, row) => Math.max(max, row.length), 0);
+  if (sourceRows === 0 || sourceCols === 0) {
+    return [];
+  }
+  const selectedColCount = selectionRange.endCol - selectionRange.startCol + 1;
+  const rangePaste = selectedRows.length > 1 || selectedColCount > 1;
+  const targetRows = rangePaste
+    ? selectedRows
+    : getVisibleRowsFromStart(selectionRange.startRow, sourceRows, displayRows, rowCount);
+  const targetCols = numberRange(rangePaste ? selectedColCount : sourceCols).map(
+    (offset) => selectionRange.startCol + offset
+  );
+  const expandedValues = rangePaste ? expandPasteValues(values, targetRows.length, targetCols.length) : values;
+  const updates: CsvCellUpdate[] = [];
+  expandedValues.forEach((line, rowOffset) => {
+    const row = targetRows[rowOffset];
+    if (row === undefined) {
+      return;
+    }
+    line.forEach((value, colOffset) => {
+      const col = targetCols[colOffset];
+      if (col !== undefined) {
+        updates.push({ row, col, value });
+      }
+    });
+  });
+  return updates;
+}
+
+function getVisibleRowsFromStart(
+  startRow: number,
+  count: number,
+  displayRows: number[] | null,
+  rowCount: number
+): number[] {
+  if (!displayRows) {
+    return numberRange(count).map((offset) => startRow + offset);
+  }
+  const startIndex = findFirstSortedIndexAtLeast(displayRows, startRow);
+  const rows = displayRows.slice(startIndex, startIndex + count);
+  let nextRow = rows[rows.length - 1] ?? Math.max(startRow, rowCount);
+  while (rows.length < count) {
+    nextRow += 1;
+    rows.push(nextRow);
+  }
+  return rows;
+}
+
+function getColumnFilterOptions(
+  data: CsvMatrix,
+  col: number,
+  filters: Array<{ col: number; values: Set<string> }>,
+  ignoredCol: number
+): FilterValueOption[] {
+  const counts = new Map<string, number>();
+  for (let row = 1; row < data.length; row += 1) {
+    if (!rowPassesColumnFilters(data, row, filters, ignoredCol)) {
+      continue;
+    }
+    const value = readCell(data, row, col);
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([value, count]) => ({
+    value,
+    label: value === "" ? "(空白)" : value,
+    count
+  }));
+}
+
+function rowPassesColumnFilters(
+  data: CsvMatrix,
+  row: number,
+  filters: Array<{ col: number; values: Set<string> }>,
+  ignoredCol?: number
+): boolean {
+  if (row === 0) {
+    return true;
+  }
+  for (const filter of filters) {
+    if (filter.col === ignoredCol) {
+      continue;
+    }
+    if (!filter.values.has(readCell(data, row, filter.col))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function getFirstVisibleUsedRow(displayRows: number[] | null): number {
+  if (!displayRows) {
+    return 0;
+  }
+  return displayRows[0] ?? 0;
+}
+
+function getLastVisibleUsedRow(displayRows: number[] | null, realEndRow: number): number {
+  if (!displayRows) {
+    return realEndRow;
+  }
+  let last = displayRows[0] ?? 0;
+  for (const row of displayRows) {
+    if (row > realEndRow) {
+      break;
+    }
+    last = row;
+  }
+  return last;
+}
+
+function findFirstSortedIndexAtLeast(values: number[], target: number): number {
+  let low = 0;
+  let high = values.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (values[mid] < target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
 function columnName(index: number): string {
   let name = "";
   let cursor = index + 1;
@@ -1659,21 +2280,4 @@ function compareCellPosition(cell: FindResultCell, row: number, col: number): nu
 function formatCellValuePreview(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > 72 ? `${compact.slice(0, 72)}...` : compact || "(空)";
-}
-
-function rangeHasLocked(
-  lockedSet: Set<string>,
-  startRow: number,
-  startCol: number,
-  endRow: number,
-  endCol: number
-): boolean {
-  for (let row = startRow; row <= endRow; row += 1) {
-    for (let col = startCol; col <= endCol; col += 1) {
-      if (lockedSet.has(cellKey(row, col))) {
-        return true;
-      }
-    }
-  }
-  return false;
 }

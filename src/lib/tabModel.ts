@@ -31,6 +31,7 @@ export async function createTabFromFileRef(fileRef: CsvFileRef, id: string): Pro
     freezeRows: 2,
     freezeCols: 2,
     colWidths: {},
+    columnFilters: {},
     undoStack: [],
     redoStack: [],
     status: "已打开"
