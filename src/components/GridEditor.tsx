@@ -113,6 +113,21 @@ type EditingCell = {
   value: string;
 } | null;
 
+type DragSelectionState =
+  | {
+      kind: "cell";
+      row: number;
+      col: number;
+    }
+  | {
+      kind: "row";
+      row: number;
+    }
+  | {
+      kind: "column";
+      col: number;
+    };
+
 type CopiedRange = ReturnType<typeof normalizeSelection> & {
   rows?: number[];
 };
@@ -178,7 +193,7 @@ export function GridEditor({
   const keyProxyRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const viewportFrameRef = useRef<number | null>(null);
-  const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
+  const dragAnchorRef = useRef<DragSelectionState | null>(null);
   const composingInputRef = useRef(false);
   const pendingSelectionScrollRef = useRef(false);
   const pendingGridFocusRef = useRef(false);
@@ -658,13 +673,31 @@ export function GridEditor({
   });
 
   const updateDragSelection = (row: number, col: number) => {
-    const anchor = dragAnchorRef.current;
-    if (!anchor) {
+    const dragState = dragAnchorRef.current;
+    if (!dragState) {
+      return;
+    }
+    if (dragState.kind === "row") {
+      onSelectionChange({
+        anchorRow: dragState.row,
+        anchorCol: realEndCol,
+        focusRow: getNearestVisibleRow(row),
+        focusCol: 0
+      });
+      return;
+    }
+    if (dragState.kind === "column") {
+      onSelectionChange({
+        anchorRow: getLastVisibleUsedRow(displayRows, realEndRow),
+        anchorCol: dragState.col,
+        focusRow: getFirstVisibleUsedRow(displayRows),
+        focusCol: clamp(col, 0, maxCols - 1)
+      });
       return;
     }
     onSelectionChange({
-      anchorRow: anchor.row,
-      anchorCol: anchor.col,
+      anchorRow: dragState.row,
+      anchorCol: dragState.col,
       focusRow: getNearestVisibleRow(row),
       focusCol: clamp(col, 0, maxCols - 1)
     });
@@ -1318,6 +1351,8 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         commitEditing(false);
+        dragAnchorRef.current = { kind: "column", col };
+        setDragging(true);
         onSelectionChange({
           anchorRow: getLastVisibleUsedRow(displayRows, realEndRow),
           anchorCol: col,
@@ -1325,6 +1360,9 @@ export function GridEditor({
           focusCol: col
         });
         focusGridInput();
+      }}
+      onPointerEnter={() => {
+        updateDragSelection(getFirstVisibleUsedRow(displayRows), col);
       }}
     >
       <span className="column-label">{columnName(col)}</span>
@@ -1375,8 +1413,13 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         commitEditing(false);
+        dragAnchorRef.current = { kind: "row", row };
+        setDragging(true);
         onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
         focusGridInput();
+      }}
+      onPointerEnter={() => {
+        updateDragSelection(row, 0);
       }}
     >
       {row + 1}
@@ -1428,7 +1471,7 @@ export function GridEditor({
           const anchor = event.shiftKey
             ? { row: tab.selection.anchorRow, col: tab.selection.anchorCol }
             : { row, col };
-          dragAnchorRef.current = anchor;
+          dragAnchorRef.current = { kind: "cell", row: anchor.row, col: anchor.col };
           setDragging(true);
           onSelectionChange(
             event.shiftKey

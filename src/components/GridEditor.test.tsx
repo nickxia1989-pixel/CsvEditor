@@ -1215,6 +1215,34 @@ describe("GridEditor toolbar", () => {
     });
   });
 
+  it("selects multiple whole columns by dragging across column headers", () => {
+    const props = renderGrid();
+
+    fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }), { pointerId: 1 });
+    fireEvent.pointerEnter(screen.getByRole("columnheader", { name: "Column D" }));
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 2,
+      anchorCol: 1,
+      focusRow: 0,
+      focusCol: 3
+    });
+  });
+
+  it("selects multiple whole rows by dragging across row headers", () => {
+    const props = renderGrid();
+
+    fireEvent.pointerDown(screen.getByRole("rowheader", { name: "Row 2" }), { pointerId: 1 });
+    fireEvent.pointerEnter(screen.getByRole("rowheader", { name: "Row 3" }));
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith({
+      anchorRow: 1,
+      anchorCol: 1,
+      focusRow: 2,
+      focusCol: 0
+    });
+  });
+
   it("selects the used data range from the corner header", () => {
     const props = renderGrid();
 
