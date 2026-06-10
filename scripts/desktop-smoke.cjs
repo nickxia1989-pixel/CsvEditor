@@ -79,6 +79,8 @@ async function main() {
         entries: result.entries,
         savedVersion: result.savedVersion,
         hasUtf8Bom,
+        favorites: result.favorites,
+        headerDrag: result.headerDrag,
         windowControls: result.windowControls,
         regions: result.regions,
         layout: result.layout

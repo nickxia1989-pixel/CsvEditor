@@ -300,6 +300,30 @@ async function runSmokeTestWhenLoaded(window) {
             ...options
           }));
         };
+        const pointerEnterElement = (element, options = {}) => {
+          const EventClass = window.PointerEvent || window.MouseEvent;
+          element.dispatchEvent(new EventClass("pointerover", {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            ...options
+          }));
+          element.dispatchEvent(new EventClass("pointerenter", {
+            bubbles: false,
+            cancelable: false,
+            pointerId: 1,
+            ...options
+          }));
+        };
+        const pointerUpWindow = (options = {}) => {
+          const EventClass = window.PointerEvent || window.MouseEvent;
+          window.dispatchEvent(new EventClass("pointerup", {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            ...options
+          }));
+        };
         const setTextAreaValue = (element, value) => {
           const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
           setter.call(element, value);
@@ -332,6 +356,35 @@ async function runSmokeTestWhenLoaded(window) {
         const fileRow = Array.from(document.querySelectorAll(".tree-row.file")).find((row) => row.textContent?.includes("smoke.csv"));
         clickElement(fileRow);
         await waitFor(() => document.querySelector(".grid-cell[aria-label='A1']") && document.querySelector(".formula-bar textarea"), "grid UI missing");
+        const favoritesBefore = api.getFavorites ? await api.getFavorites() : [];
+        let favoriteListed = false;
+        let favoritePersisted = false;
+        let favoriteButtonDisabledAfterAdd = false;
+        try {
+          const addFavoriteButton = findButton("加入收藏");
+          if (!addFavoriteButton || addFavoriteButton.disabled) {
+            throw new Error("add favorite button missing or disabled");
+          }
+          clickElement(addFavoriteButton);
+          await waitFor(
+            () => Array.from(document.querySelectorAll(".favorite-row")).some((row) => row.textContent?.includes("smoke.csv")),
+            "favorite row missing"
+          );
+          favoriteListed = Array.from(document.querySelectorAll(".favorite-row")).some((row) => row.textContent?.includes("smoke.csv"));
+          const savedFavorites = api.getFavorites ? await api.getFavorites() : [];
+          favoritePersisted = savedFavorites.some((favorite) => favorite.path === target.path && favorite.name === "smoke.csv");
+          favoriteButtonDisabledAfterAdd = addFavoriteButton.disabled;
+          const favoriteRow = Array.from(document.querySelectorAll(".favorite-row")).find((row) => row.textContent?.includes("smoke.csv"));
+          clickElement(favoriteRow);
+          await waitFor(
+            () => Array.from(document.querySelectorAll("[role='tab']")).some((tab) => tab.textContent?.includes("smoke.csv")),
+            "favorite did not open the smoke tab"
+          );
+        } finally {
+          if (api.setFavorites) {
+            await api.setFavorites(favoritesBefore);
+          }
+        }
         const workspaceStatusRemoved = !document.querySelector(".workspace-status");
         const tools = document.querySelector(".grid-tools");
         const formulaBar = document.querySelector(".formula-bar");
@@ -390,6 +443,26 @@ async function runSmokeTestWhenLoaded(window) {
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"), "single selection not restored");
         pointerDownElement(restoredCellB2, { shiftKey: true });
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "shift selection not restored");
+        const columnHeaderB = document.querySelector("[role='columnheader'][aria-label='Column B']");
+        const columnHeaderD = document.querySelector("[role='columnheader'][aria-label='Column D']");
+        if (!columnHeaderB || !columnHeaderD) {
+          throw new Error("column drag headers missing");
+        }
+        pointerDownElement(columnHeaderB);
+        pointerEnterElement(columnHeaderD);
+        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 3"), "column header drag selection not reflected");
+        const columnHeaderDragStatus = document.querySelector(".grid-status")?.textContent ?? "";
+        pointerUpWindow();
+        const rowHeader1 = document.querySelector("[role='rowheader'][aria-label='Row 1']");
+        const rowHeader2 = document.querySelector("[role='rowheader'][aria-label='Row 2']");
+        if (!rowHeader1 || !rowHeader2) {
+          throw new Error("row drag headers missing");
+        }
+        pointerDownElement(rowHeader1);
+        pointerEnterElement(rowHeader2);
+        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "row header drag selection not reflected");
+        const rowHeaderDragStatus = document.querySelector(".grid-status")?.textContent ?? "";
+        pointerUpWindow();
         setTextAreaValue(detailEditor, "多行\\n详情\\n编辑");
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("未保存 1"), "detail textarea edit not reflected");
         const gridStatusText = document.querySelector(".grid-status")?.textContent ?? "";
@@ -437,6 +510,11 @@ async function runSmokeTestWhenLoaded(window) {
           entries: entries.length,
           initialText,
           savedText,
+          favorites: {
+            listed: favoriteListed,
+            persisted: favoritePersisted,
+            addButtonDisabled: favoriteButtonDisabledAfterAdd
+          },
           buttons,
           windowControls,
           windowState,
@@ -468,6 +546,10 @@ async function runSmokeTestWhenLoaded(window) {
             workspaceStatusRemoved,
             gridStatusText
           },
+          headerDrag: {
+            column: columnHeaderDragStatus,
+            row: rowHeaderDragStatus
+          },
           savedVersion: saved.version
         };
       })();
@@ -488,9 +570,13 @@ async function runSmokeTestWhenLoaded(window) {
       !buttonTexts.includes("SVN提交") ||
       !buttonTexts.includes("刷新") ||
       !buttonTexts.includes("保存") ||
-      !buttonTexts.includes("全部保存")
+      !buttonTexts.includes("全部保存") ||
+      !buttonTexts.includes("加入收藏")
     ) {
       throw new Error("桌面左侧操作按钮烟测不正确。");
+    }
+    if (!result.favorites?.listed || !result.favorites.persisted || !result.favorites.addButtonDisabled) {
+      throw new Error("桌面收藏功能烟测不正确。");
     }
     const windowControlLabels = result.windowControls.map((control) => control.label);
     if (!windowControlLabels.includes("最小化") || !windowControlLabels.includes("最大化") || !windowControlLabels.includes("关闭")) {
@@ -533,6 +619,9 @@ async function runSmokeTestWhenLoaded(window) {
       !result.layout.gridStatusText.includes("UTF-8")
     ) {
       throw new Error("桌面编辑区布局或 Shift 选区烟测不正确。");
+    }
+    if (!result.headerDrag?.column.includes("选区 2 x 3") || !result.headerDrag?.row.includes("选区 2 x 2")) {
+      throw new Error("桌面行列头拖选烟测不正确。");
     }
     if (resultPath) {
       fsSync.writeFileSync(resultPath, JSON.stringify(result, null, 2), "utf8");
