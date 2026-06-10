@@ -10,15 +10,19 @@ import {
   Save,
   SaveAll,
   Search,
+  Star,
+  X,
   Upload
 } from "lucide-react";
-import type { TreeNode } from "../types";
+import type { CsvFavoriteFile, TreeNode } from "../types";
 
 const TREE_ROW_HEIGHT = 28;
 const TREE_OVERSCAN = 12;
 
 type DirectoryPaneProps = {
   root: TreeNode | null;
+  favorites: CsvFavoriteFile[];
+  activeFavoritePath: string | null;
   filter: string;
   directoryPickerAvailable: boolean;
   svnCommitAvailable: boolean;
@@ -35,10 +39,14 @@ type DirectoryPaneProps = {
   onSaveAll(): void;
   onToggleDirectory(node: TreeNode): void;
   onOpenFile(node: TreeNode): void;
+  onOpenFavorite(favorite: CsvFavoriteFile): void;
+  onRemoveFavorite(favorite: CsvFavoriteFile): void;
 };
 
 export function DirectoryPane({
   root,
+  favorites,
+  activeFavoritePath,
   filter,
   directoryPickerAvailable,
   svnCommitAvailable,
@@ -54,7 +62,9 @@ export function DirectoryPane({
   onSaveActive,
   onSaveAll,
   onToggleDirectory,
-  onOpenFile
+  onOpenFile,
+  onOpenFavorite,
+  onRemoveFavorite
 }: DirectoryPaneProps) {
   const treeRef = useRef<HTMLDivElement | null>(null);
   const [treeViewport, setTreeViewport] = useState({
@@ -171,6 +181,40 @@ export function DirectoryPane({
       {!directoryPickerAvailable ? (
         <div className="compat-note">当前浏览器不支持目录选择。请用 Chrome 或 Edge 打开本地 dev URL。</div>
       ) : null}
+
+      <section className="favorites-section" aria-label="收藏表格">
+        <div className="favorites-title">
+          <Star size={15} />
+          <span>收藏</span>
+        </div>
+        {favorites.length > 0 ? (
+          <div className="favorites-list">
+            {favorites.map((favorite) => (
+              <div className="favorite-slot" key={favorite.path}>
+                <button
+                  className={`favorite-row ${favorite.path === activeFavoritePath ? "active" : ""}`}
+                  onClick={() => onOpenFavorite(favorite)}
+                  title={favorite.path}
+                >
+                  <FileText size={14} />
+                  <span>{favorite.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="favorite-remove"
+                  onClick={() => onRemoveFavorite(favorite)}
+                  title={`移除 ${favorite.name}`}
+                  aria-label={`移除收藏 ${favorite.name}`}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="favorite-empty">暂无收藏</div>
+        )}
+      </section>
 
       <label className="search-box">
         <Search size={15} />

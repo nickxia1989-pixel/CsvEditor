@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("csvDesktop", {
   minimizeWindow: () => ipcRenderer.invoke("csv:window-minimize"),
   toggleMaximizeWindow: () => ipcRenderer.invoke("csv:window-toggle-maximize"),
   closeWindow: () => ipcRenderer.invoke("csv:window-close"),
+  getFavorites: () => ipcRenderer.invoke("csv:favorites-get"),
+  setFavorites: (favorites) => ipcRenderer.invoke("csv:favorites-set", favorites),
   onWindowStateChange: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on("csv:window-state", listener);

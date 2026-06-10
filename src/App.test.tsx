@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { BrowserDirectoryHandle, BrowserFileHandle, CsvDesktopApi } from "./lib/fileRefs";
@@ -71,6 +71,7 @@ class MockDirectoryHandle implements BrowserDirectoryHandle {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.localStorage.clear();
   Reflect.deleteProperty(window, "showDirectoryPicker");
   Reflect.deleteProperty(window, "csvDesktop");
 });
@@ -123,6 +124,68 @@ describe("App local directory flow", () => {
     expect(directoryPane).toContainElement(screen.getByRole("button", { name: "保存" }));
     expect(directoryPane).toContainElement(screen.getByRole("button", { name: "全部保存" }));
     expect(container.querySelector(".topbar-actions")).not.toBeInTheDocument();
+  });
+
+  it("adds the active document to favorites and persists the list in browser mode", async () => {
+    const file = new MockFileHandle("favorite.csv", "ID,Name\n1,Alpha");
+    const root = new MockDirectoryHandle("Tables", [["favorite.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "favorite.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+
+    fireEvent.click(screen.getByRole("button", { name: "加入收藏" }));
+
+    const favoriteSection = screen.getByLabelText("收藏表格");
+    expect(within(favoriteSection).getByRole("button", { name: "favorite.csv" })).toHaveClass("active");
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem("csv-workspace-editor:favorites:v1") ?? "[]")).toEqual([
+        {
+          name: "favorite.csv",
+          path: "Tables/favorite.csv",
+          source: "local"
+        }
+      ]);
+    });
+  });
+
+  it("opens a persisted desktop favorite without picking a directory again", async () => {
+    const api: CsvDesktopApi = {
+      pickDirectory: vi.fn(),
+      listDirectory: vi.fn(),
+      readFile: vi.fn(async () => ({
+        data: new TextEncoder().encode("ID,Name\n1,Alpha"),
+        version: { lastModified: 5, size: 15 }
+      })),
+      writeFile: vi.fn(),
+      getVersion: vi.fn(),
+      getFavorites: vi.fn(async () => [
+        {
+          name: "desktop-favorite.csv",
+          path: "C:\\Tables\\desktop-favorite.csv",
+          source: "local" as const
+        }
+      ]),
+      setFavorites: vi.fn(async (favorites) => favorites)
+    };
+    Object.defineProperty(window, "csvDesktop", {
+      configurable: true,
+      value: api
+    });
+
+    render(<App />);
+
+    const favoriteSection = await screen.findByLabelText("收藏表格");
+    fireEvent.click(within(favoriteSection).getByRole("button", { name: "desktop-favorite.csv" }));
+
+    await waitFor(() => expect(api.readFile).toHaveBeenCalledWith("C:\\Tables\\desktop-favorite.csv"));
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
   });
 
   it("auto refreshes a clean tab when the disk version changes", async () => {

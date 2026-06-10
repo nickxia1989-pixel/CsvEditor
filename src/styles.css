@@ -191,6 +191,94 @@ button {
   color: #fff;
 }
 
+.favorites-section {
+  display: flex;
+  min-height: 0;
+  max-height: 152px;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 10px 9px;
+  -webkit-app-region: no-drag;
+}
+
+.favorites-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  color: #3d515a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.favorites-list {
+  display: flex;
+  min-height: 0;
+  overflow: auto;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 2px;
+}
+
+.favorite-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 3px;
+}
+
+.favorite-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 26px;
+  gap: 6px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #263942;
+  cursor: pointer;
+  text-align: left;
+}
+
+.favorite-row:hover,
+.favorite-row.active {
+  background: #e5f1ef;
+  color: var(--accent-strong);
+}
+
+.favorite-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.favorite-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.favorite-remove:hover {
+  background: #f2e8e4;
+  color: var(--danger);
+}
+
+.favorite-empty {
+  min-height: 26px;
+  padding: 6px 8px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
@@ -320,11 +408,36 @@ button:disabled {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: stretch;
   border-bottom: 1px solid var(--line);
   background: #f9fbfb;
   -webkit-app-region: drag;
+}
+
+.favorite-active-button {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  margin: 5px 6px 5px 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: #243942;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.favorite-active-button:hover:not(:disabled),
+.favorite-active-button.active {
+  border-color: #8fbfb9;
+  background: #e7f4f2;
+  color: var(--accent-strong);
 }
 
 .tab-strip {

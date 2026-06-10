@@ -35,6 +35,63 @@ async function getVersion(filePath) {
   };
 }
 
+function getFavoritesPath() {
+  return path.join(app.getPath("userData"), "favorites.json");
+}
+
+function sanitizeFavorites(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set();
+  const favorites = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    const favoritePath = typeof item.path === "string" ? item.path.trim() : "";
+    const source = item.source === "sample" ? "sample" : "local";
+    if (!name || !favoritePath || seen.has(favoritePath)) {
+      continue;
+    }
+    seen.add(favoritePath);
+    favorites.push({ name, path: favoritePath, source });
+  }
+  return favorites.slice(0, 60);
+}
+
+function authorizeFavoriteRoots(favorites) {
+  for (const favorite of favorites) {
+    if (favorite.source !== "local" || !path.isAbsolute(favorite.path)) {
+      continue;
+    }
+    addAllowedRoot(path.dirname(favorite.path));
+  }
+}
+
+async function readFavorites() {
+  try {
+    const text = await fs.readFile(getFavoritesPath(), "utf8");
+    const favorites = sanitizeFavorites(JSON.parse(text));
+    authorizeFavoriteRoots(favorites);
+    return favorites;
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function writeFavorites(favorites) {
+  const sanitized = sanitizeFavorites(favorites);
+  await fs.mkdir(path.dirname(getFavoritesPath()), { recursive: true });
+  await fs.writeFile(getFavoritesPath(), `${JSON.stringify(sanitized, null, 2)}\n`, "utf8");
+  authorizeFavoriteRoots(sanitized);
+  return sanitized;
+}
+
 function toWriteBuffer(data) {
   if (typeof data === "string") {
     return Buffer.from(data, "utf8");
@@ -545,6 +602,8 @@ ipcMain.handle("csv:window-toggle-maximize", (event) => {
 ipcMain.handle("csv:window-close", (event) => {
   getSenderWindow(event).close();
 });
+ipcMain.handle("csv:favorites-get", () => readFavorites());
+ipcMain.handle("csv:favorites-set", (_event, favorites) => writeFavorites(favorites));
 
 if (process.env.CSV_EDITOR_ALLOWED_ROOTS) {
   for (const root of process.env.CSV_EDITOR_ALLOWED_ROOTS.split(path.delimiter)) {

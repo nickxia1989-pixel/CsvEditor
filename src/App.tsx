@@ -14,6 +14,7 @@ import {
   Minus,
   RefreshCw,
   RotateCcw,
+  Star,
   X
 } from "lucide-react";
 import { DirectoryPane } from "./components/DirectoryPane";
@@ -35,12 +36,15 @@ import {
   canControlDesktopWindow,
   closeDesktopWindow,
   getDesktopWindowState,
+  loadFavoriteFiles,
+  makeDesktopFileRef,
   canPickDirectory,
   isDesktopDirectoryHandle,
   minimizeDesktopWindow,
   openSvnCommit,
   openSvnUpdate,
   pickDirectory,
+  saveFavoriteFiles,
   subscribeDesktopWindowState,
   toggleMaximizeDesktopWindow,
   versionEquals,
@@ -78,6 +82,7 @@ import type {
   CsvCellStyleMap,
   CsvCellUpdate,
   CsvColumnFilters,
+  CsvFavoriteFile,
   CsvTab,
   FindResultCell,
   GridScrollPosition,
@@ -108,6 +113,8 @@ type SaveOptions = {
 export function App() {
   const [root, setRoot] = useState<TreeNode | null>(null);
   const [treeFilter, setTreeFilter] = useState("");
+  const [favoriteFiles, setFavoriteFiles] = useState<CsvFavoriteFile[]>([]);
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [tabs, setTabs] = useState<CsvTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
@@ -141,6 +148,10 @@ export function App() {
   }, [activeTabId]);
 
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [activeTabId, tabs]);
+  const activeFavorite = useMemo(
+    () => Boolean(activeTab && favoriteFiles.some((favorite) => favorite.path === activeTab.path)),
+    [activeTab, favoriteFiles]
+  );
   const activeScrollPosition = activeTabId
     ? tabScrollPositionsRef.current[activeTabId] ?? DEFAULT_GRID_SCROLL_POSITION
     : DEFAULT_GRID_SCROLL_POSITION;
@@ -182,6 +193,39 @@ export function App() {
       setNotice((current) => (current?.message === message ? null : current));
     }, 4200);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadFavoriteFiles()
+      .then((favorites) => {
+        if (!cancelled) {
+          setFavoriteFiles(favorites);
+          setFavoritesLoaded(true);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setFavoritesLoaded(true);
+          notify("error", error instanceof Error ? error.message : String(error));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [notify]);
+
+  useEffect(() => {
+    if (!favoritesLoaded) {
+      return;
+    }
+    void saveFavoriteFiles(favoriteFiles)
+      .then((savedFavorites) => {
+        if (!favoritesEqual(favoriteFiles, savedFavorites)) {
+          setFavoriteFiles(savedFavorites);
+        }
+      })
+      .catch((error) => notify("error", error instanceof Error ? error.message : String(error)));
+  }, [favoriteFiles, favoritesLoaded, notify]);
 
   const runAfterActiveEditCommit = useCallback((action: () => void) => {
     window.dispatchEvent(new Event(COMMIT_ACTIVE_EDIT_EVENT));
@@ -349,6 +393,47 @@ export function App() {
     },
     [openFileRef, runAfterActiveEditCommit]
   );
+
+  const handleAddActiveFavorite = useCallback(() => {
+    if (!activeTab) {
+      notify("warning", "没有可收藏的当前文档。");
+      return;
+    }
+    if (favoriteFiles.some((favorite) => favorite.path === activeTab.path)) {
+      notify("info", "当前文档已在收藏中。");
+      return;
+    }
+    const nextFavorite: CsvFavoriteFile = {
+      name: activeTab.name,
+      path: activeTab.path,
+      source: activeTab.fileRef.source
+    };
+    setFavoriteFiles((current) => [nextFavorite, ...current].slice(0, 60));
+    notify("success", `已加入收藏 ${activeTab.name}`);
+  }, [activeTab, favoriteFiles, notify]);
+
+  const handleOpenFavorite = useCallback(
+    (favorite: CsvFavoriteFile) => {
+      runAfterActiveEditCommit(() => {
+        const treeNode = root ? findFileNodeByPath(root, favorite.path) : null;
+        const fileRef =
+          treeNode?.fileRef ??
+          (favorite.source === "local"
+            ? makeDesktopFileRef({ kind: "file", name: favorite.name, path: favorite.path })
+            : null);
+        if (!fileRef) {
+          notify("warning", "请先载入包含该收藏文件的目录。");
+          return;
+        }
+        void openFileRef(fileRef);
+      });
+    },
+    [notify, openFileRef, root, runAfterActiveEditCommit]
+  );
+
+  const handleRemoveFavorite = useCallback((favorite: CsvFavoriteFile) => {
+    setFavoriteFiles((current) => current.filter((item) => item.path !== favorite.path));
+  }, []);
 
   const reloadTabFromDisk = useCallback(
     async (id: string, force = false) => {
@@ -684,6 +769,8 @@ export function App() {
     >
       <DirectoryPane
         root={root}
+        favorites={favoriteFiles}
+        activeFavoritePath={activeTab?.path ?? null}
         filter={treeFilter}
         directoryPickerAvailable={directoryPickerAvailable}
         svnCommitAvailable={svnCommitAvailable}
@@ -700,6 +787,8 @@ export function App() {
         onSaveAll={() => runAfterActiveEditCommit(() => void saveAllDirtyTabs())}
         onToggleDirectory={handleToggleDirectory}
         onOpenFile={handleOpenTreeFile}
+        onOpenFavorite={handleOpenFavorite}
+        onRemoveFavorite={handleRemoveFavorite}
       />
 
       <div
@@ -725,6 +814,15 @@ export function App() {
             onActivate={activateTabAfterEditCommit}
             onClose={closeTabAfterEditCommit}
           />
+          <button
+            className={`favorite-active-button ${activeFavorite ? "active" : ""}`}
+            onClick={handleAddActiveFavorite}
+            disabled={!activeTab || activeFavorite}
+            title={activeFavorite ? "当前文档已在收藏中" : "将当前文档加入收藏"}
+          >
+            <Star size={15} fill={activeFavorite ? "currentColor" : "none"} />
+            加入收藏
+          </button>
           {desktopWindowControlsAvailable ? (
             <div className="window-controls" aria-label="窗口控制">
               <button className="window-control" onClick={() => void minimizeDesktopWindow()} title="最小化" aria-label="最小化">
@@ -1710,6 +1808,31 @@ function countSortedValuesBelow(values: number[], target: number): number {
     }
   }
   return low;
+}
+
+function findFileNodeByPath(node: TreeNode, targetPath: string): TreeNode | null {
+  if (node.kind === "file" && node.path === targetPath) {
+    return node;
+  }
+  for (const child of node.children ?? []) {
+    const matched = findFileNodeByPath(child, targetPath);
+    if (matched) {
+      return matched;
+    }
+  }
+  return null;
+}
+
+function favoritesEqual(left: CsvFavoriteFile[], right: CsvFavoriteFile[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every(
+    (favorite, index) =>
+      favorite.name === right[index]?.name &&
+      favorite.path === right[index]?.path &&
+      favorite.source === right[index]?.source
+  );
 }
 
 function clamp(value: number, min: number, max: number): number {

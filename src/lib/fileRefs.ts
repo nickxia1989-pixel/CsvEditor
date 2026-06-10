@@ -1,4 +1,5 @@
 import { decodeTextBuffer } from "./textDecode";
+import type { CsvFavoriteFile } from "../types";
 
 export type CsvWritableData = string | Uint8Array;
 
@@ -66,6 +67,8 @@ export type CsvDesktopApi = {
   minimizeWindow?(): Promise<void>;
   toggleMaximizeWindow?(): Promise<DesktopWindowState>;
   closeWindow?(): Promise<void>;
+  getFavorites?(): Promise<CsvFavoriteFile[]>;
+  setFavorites?(favorites: CsvFavoriteFile[]): Promise<CsvFavoriteFile[]>;
   onWindowStateChange?(callback: (state: DesktopWindowState) => void): () => void;
 };
 
@@ -163,6 +166,35 @@ export async function closeDesktopWindow(): Promise<void> {
     return;
   }
   await desktop.closeWindow();
+}
+
+const FAVORITES_STORAGE_KEY = "csv-workspace-editor:favorites:v1";
+
+export async function loadFavoriteFiles(): Promise<CsvFavoriteFile[]> {
+  const desktop = getDesktopApi();
+  if (desktop?.getFavorites) {
+    return sanitizeFavorites(await desktop.getFavorites());
+  }
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    return sanitizeFavorites(JSON.parse(window.localStorage.getItem(FAVORITES_STORAGE_KEY) ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveFavoriteFiles(favorites: CsvFavoriteFile[]): Promise<CsvFavoriteFile[]> {
+  const sanitized = sanitizeFavorites(favorites);
+  const desktop = getDesktopApi();
+  if (desktop?.setFavorites) {
+    return sanitizeFavorites(await desktop.setFavorites(sanitized));
+  }
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(sanitized));
+  }
+  return sanitized;
 }
 
 export function subscribeDesktopWindowState(callback: (state: DesktopWindowState) => void): () => void {
@@ -309,6 +341,32 @@ function requireDesktopApi(): CsvDesktopApi {
     throw new Error("桌面文件接口不可用。");
   }
   return desktop;
+}
+
+function sanitizeFavorites(value: unknown): CsvFavoriteFile[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const favorites: CsvFavoriteFile[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const candidate = item as Partial<CsvFavoriteFile>;
+    if (typeof candidate.name !== "string" || typeof candidate.path !== "string") {
+      continue;
+    }
+    const source = candidate.source === "sample" ? "sample" : "local";
+    const name = candidate.name.trim();
+    const favoritePath = candidate.path.trim();
+    if (!name || !favoritePath || seen.has(favoritePath)) {
+      continue;
+    }
+    seen.add(favoritePath);
+    favorites.push({ name, path: favoritePath, source });
+  }
+  return favorites.slice(0, 60);
 }
 
 function toUint8Array(data: Uint8Array | ArrayBuffer): Uint8Array {

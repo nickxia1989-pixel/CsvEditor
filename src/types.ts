@@ -33,6 +33,12 @@ export type CsvCellUpdate = FindResultCell & {
 
 export type CsvColumnFilters = Record<number, string[]>;
 
+export type CsvFavoriteFile = {
+  name: string;
+  path: string;
+  source: CsvFileRef["source"];
+};
+
 export type CsvTab = {
   id: string;
   name: string;

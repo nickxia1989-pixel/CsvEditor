@@ -27,6 +27,8 @@ function createLargeRoot(count: number): TreeNode {
 function renderDirectory(root = createLargeRoot(200), overrides: Partial<ComponentProps<typeof DirectoryPane>> = {}) {
   const props = {
     root,
+    favorites: [],
+    activeFavoritePath: null,
     filter: "",
     directoryPickerAvailable: true,
     svnCommitAvailable: true,
@@ -43,6 +45,8 @@ function renderDirectory(root = createLargeRoot(200), overrides: Partial<Compone
     onSaveAll: vi.fn(),
     onToggleDirectory: vi.fn(),
     onOpenFile: vi.fn(),
+    onOpenFavorite: vi.fn(),
+    onRemoveFavorite: vi.fn(),
     ...overrides
   };
   const result = render(<DirectoryPane {...props} />);
@@ -111,6 +115,40 @@ describe("DirectoryPane", () => {
     expect(props.onReloadActive).toHaveBeenCalledTimes(1);
     expect(props.onSaveActive).toHaveBeenCalledTimes(1);
     expect(props.onSaveAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders favorite files and forwards open and remove actions", () => {
+    const { props } = renderDirectory(createLargeRoot(3), {
+      favorites: [
+        {
+          name: "monster.csv",
+          path: "Tables/monster/monster.csv",
+          source: "local"
+        }
+      ],
+      activeFavoritePath: "Tables/monster/monster.csv"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "monster.csv" }));
+    fireEvent.click(screen.getByRole("button", { name: "移除收藏 monster.csv" }));
+
+    expect(screen.getByRole("button", { name: "monster.csv" })).toHaveClass("active");
+    expect(props.onOpenFavorite).toHaveBeenCalledWith({
+      name: "monster.csv",
+      path: "Tables/monster/monster.csv",
+      source: "local"
+    });
+    expect(props.onRemoveFavorite).toHaveBeenCalledWith({
+      name: "monster.csv",
+      path: "Tables/monster/monster.csv",
+      source: "local"
+    });
+  });
+
+  it("shows an empty favorite state when there are no favorites", () => {
+    renderDirectory(createLargeRoot(3));
+
+    expect(screen.getByLabelText("收藏表格")).toHaveTextContent("暂无收藏");
   });
 
   it("disables current file actions when the app has no matching operation", () => {
