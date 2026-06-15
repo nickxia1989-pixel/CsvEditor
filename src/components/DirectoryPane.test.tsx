@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { DirectoryPane } from "./DirectoryPane";
@@ -143,6 +143,25 @@ describe("DirectoryPane", () => {
       path: "Tables/monster/monster.csv",
       source: "local"
     });
+  });
+
+  it("sorts favorite files alphabetically by name", () => {
+    renderDirectory(createLargeRoot(3), {
+      favorites: [
+        { name: "zeta.csv", path: "Tables/zeta.csv", source: "local" },
+        { name: "beta-10.csv", path: "Tables/beta-10.csv", source: "local" },
+        { name: "Alpha.csv", path: "Tables/Alpha.csv", source: "local" },
+        { name: "beta-2.csv", path: "Tables/beta-2.csv", source: "local" }
+      ]
+    });
+
+    const favoriteSection = screen.getByLabelText("收藏表格");
+    const favoriteNames = within(favoriteSection)
+      .getAllByRole("button")
+      .filter((button) => button.classList.contains("favorite-row"))
+      .map((button) => button.textContent);
+
+    expect(favoriteNames).toEqual(["Alpha.csv", "beta-2.csv", "beta-10.csv", "zeta.csv"]);
   });
 
   it("shows an empty favorite state when there are no favorites", () => {

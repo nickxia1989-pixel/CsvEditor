@@ -72,6 +72,7 @@ export function DirectoryPane({
     scrollTop: 0
   });
   const normalizedFilter = filter.trim().toLowerCase();
+  const sortedFavorites = useMemo(() => sortFavoritesByName(favorites), [favorites]);
   const rows = useMemo(() => (root ? flattenTreeRows(root, normalizedFilter) : []), [normalizedFilter, root]);
   const totalHeight = Math.max(rows.length * TREE_ROW_HEIGHT, treeViewport.height);
   const visibleStart = clamp(
@@ -187,9 +188,9 @@ export function DirectoryPane({
           <Star size={15} />
           <span>收藏</span>
         </div>
-        {favorites.length > 0 ? (
+        {sortedFavorites.length > 0 ? (
           <div className="favorites-list">
-            {favorites.map((favorite) => (
+            {sortedFavorites.map((favorite) => (
               <div className="favorite-slot" key={favorite.path}>
                 <button
                   className={`favorite-row ${favorite.path === activeFavoritePath ? "active" : ""}`}
@@ -339,6 +340,14 @@ function nodeMatchesFilter(node: TreeNode, filter: string): boolean {
     return true;
   }
   return Boolean(node.children?.some((child) => nodeMatchesFilter(child, filter)));
+}
+
+function sortFavoritesByName(favorites: CsvFavoriteFile[]): CsvFavoriteFile[] {
+  return [...favorites].sort(
+    (left, right) =>
+      left.name.localeCompare(right.name, "zh-CN", { numeric: true, sensitivity: "base" }) ||
+      left.path.localeCompare(right.path, "zh-CN", { numeric: true, sensitivity: "base" })
+  );
 }
 
 function clamp(value: number, min: number, max: number): number {
