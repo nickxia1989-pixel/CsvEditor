@@ -115,6 +115,23 @@ function createClipboardData() {
   };
 }
 
+function mockGridRect(grid: HTMLElement) {
+  Object.defineProperty(grid, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({
+      x: 0,
+      y: 0,
+      width: 1000,
+      height: 1000,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 1000,
+      toJSON: () => ({})
+    })
+  });
+}
+
 describe("GridEditor editing workflow", () => {
   it("copies the selected TSV range and reports copy status", async () => {
     const clipboardData = createClipboardData();
@@ -699,10 +716,12 @@ describe("GridEditor toolbar", () => {
 
   it("keeps the original anchor while dragging a cell range", async () => {
     const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    mockGridRect(grid);
 
     fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A1" }), {
       clientX: 80,
-      clientY: 70,
+      clientY: 44,
       pointerId: 1
     });
 
@@ -710,7 +729,7 @@ describe("GridEditor toolbar", () => {
       expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(0, 0));
     });
 
-    fireEvent.pointerEnter(screen.getByRole("gridcell", { name: "B2" }));
+    fireEvent.pointerMove(grid, { clientX: 239, clientY: 72, pointerId: 1 });
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith({
       anchorRow: 0,
@@ -718,6 +737,24 @@ describe("GridEditor toolbar", () => {
       focusRow: 1,
       focusCol: 1
     });
+  });
+
+  it("keeps a first-row click to one cell when the pointer jitters into the next row", () => {
+    const props = renderGrid();
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A1" }), {
+      clientX: 80,
+      clientY: 56,
+      pointerId: 1
+    });
+    fireEvent.pointerEnter(screen.getByRole("gridcell", { name: "A2" }), {
+      clientX: 80,
+      clientY: 57,
+      pointerId: 1
+    });
+
+    expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(0, 0));
+    fireEvent.pointerUp(window, { pointerId: 1 });
   });
 
   it("extends the selection range from the previous anchor with Shift click", () => {
@@ -1217,9 +1254,11 @@ describe("GridEditor toolbar", () => {
 
   it("selects multiple whole columns by dragging across column headers", () => {
     const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    mockGridRect(grid);
 
     fireEvent.pointerDown(screen.getByRole("columnheader", { name: "Column B" }), { pointerId: 1 });
-    fireEvent.pointerEnter(screen.getByRole("columnheader", { name: "Column D" }));
+    fireEvent.pointerMove(grid, { clientX: 483, clientY: 15, pointerId: 1 });
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith({
       anchorRow: 2,
@@ -1231,9 +1270,11 @@ describe("GridEditor toolbar", () => {
 
   it("selects multiple whole rows by dragging across row headers", () => {
     const props = renderGrid();
+    const grid = screen.getByRole("grid", { name: "CSV grid" });
+    mockGridRect(grid);
 
     fireEvent.pointerDown(screen.getByRole("rowheader", { name: "Row 2" }), { pointerId: 1 });
-    fireEvent.pointerEnter(screen.getByRole("rowheader", { name: "Row 3" }));
+    fireEvent.pointerMove(grid, { clientX: 20, clientY: 100, pointerId: 1 });
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith({
       anchorRow: 1,

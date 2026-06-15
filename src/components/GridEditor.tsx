@@ -43,6 +43,7 @@ const DEFAULT_COL_WIDTH = 122;
 const DEFAULT_ROW_HEIGHT = 28;
 const MIN_COL_WIDTH = 54;
 const OVERSCAN = 6;
+const DRAG_SELECTION_THRESHOLD_PX = 8;
 export const COMMIT_ACTIVE_EDIT_EVENT = "csv-editor:commit-active-edit";
 const TEXT_COLOR_PRESETS = ["#172026", "#b42318", "#0f766e", "#1d4ed8"];
 const BACKGROUND_COLOR_PRESETS = ["#ffffff", "#fff3bf", "#dff0ee", "#eaf3ff"];
@@ -113,20 +114,28 @@ type EditingCell = {
   value: string;
 } | null;
 
-type DragSelectionState =
-  | {
-      kind: "cell";
-      row: number;
-      col: number;
-    }
-  | {
-      kind: "row";
-      row: number;
-    }
-  | {
-      kind: "column";
-      col: number;
-    };
+type DragSelectionOrigin = {
+  startX: number;
+  startY: number;
+  active: boolean;
+};
+
+type DragSelectionState = DragSelectionOrigin &
+  (
+    | {
+        kind: "cell";
+        row: number;
+        col: number;
+      }
+    | {
+        kind: "row";
+        row: number;
+      }
+    | {
+        kind: "column";
+        col: number;
+      }
+  );
 
 type CopiedRange = ReturnType<typeof normalizeSelection> & {
   rows?: number[];
@@ -672,9 +681,26 @@ export function GridEditor({
     return () => window.removeEventListener(COMMIT_ACTIVE_EDIT_EVENT, handleCommitActiveEdit);
   });
 
-  const updateDragSelection = (row: number, col: number) => {
+  const activateDragSelection = (clientX: number, clientY: number) => {
     const dragState = dragAnchorRef.current;
     if (!dragState) {
+      return false;
+    }
+    if (dragState.active) {
+      return true;
+    }
+    const deltaX = clientX - dragState.startX;
+    const deltaY = clientY - dragState.startY;
+    if (deltaX * deltaX + deltaY * deltaY < DRAG_SELECTION_THRESHOLD_PX * DRAG_SELECTION_THRESHOLD_PX) {
+      return false;
+    }
+    dragAnchorRef.current = { ...dragState, active: true };
+    return true;
+  };
+
+  const updateDragSelection = (row: number, col: number) => {
+    const dragState = dragAnchorRef.current;
+    if (!dragState?.active) {
       return;
     }
     if (dragState.kind === "row") {
@@ -707,6 +733,9 @@ export function GridEditor({
     const element = viewportRef.current;
     const anchor = dragAnchorRef.current;
     if (!element || !anchor) {
+      return;
+    }
+    if (!activateDragSelection(clientX, clientY)) {
       return;
     }
 
@@ -1351,7 +1380,13 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         commitEditing(false);
-        dragAnchorRef.current = { kind: "column", col };
+        dragAnchorRef.current = {
+          kind: "column",
+          col,
+          startX: event.clientX,
+          startY: event.clientY,
+          active: false
+        };
         setDragging(true);
         onSelectionChange({
           anchorRow: getLastVisibleUsedRow(displayRows, realEndRow),
@@ -1361,8 +1396,10 @@ export function GridEditor({
         });
         focusGridInput();
       }}
-      onPointerEnter={() => {
-        updateDragSelection(getFirstVisibleUsedRow(displayRows), col);
+      onPointerEnter={(event) => {
+        if (activateDragSelection(event.clientX, event.clientY)) {
+          updateDragSelection(getFirstVisibleUsedRow(displayRows), col);
+        }
       }}
     >
       <span className="column-label">{columnName(col)}</span>
@@ -1413,13 +1450,21 @@ export function GridEditor({
       onPointerDown={(event) => {
         event.preventDefault();
         commitEditing(false);
-        dragAnchorRef.current = { kind: "row", row };
+        dragAnchorRef.current = {
+          kind: "row",
+          row,
+          startX: event.clientX,
+          startY: event.clientY,
+          active: false
+        };
         setDragging(true);
         onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
         focusGridInput();
       }}
-      onPointerEnter={() => {
-        updateDragSelection(row, 0);
+      onPointerEnter={(event) => {
+        if (activateDragSelection(event.clientX, event.clientY)) {
+          updateDragSelection(row, 0);
+        }
       }}
     >
       {row + 1}
@@ -1471,7 +1516,14 @@ export function GridEditor({
           const anchor = event.shiftKey
             ? { row: tab.selection.anchorRow, col: tab.selection.anchorCol }
             : { row, col };
-          dragAnchorRef.current = { kind: "cell", row: anchor.row, col: anchor.col };
+          dragAnchorRef.current = {
+            kind: "cell",
+            row: anchor.row,
+            col: anchor.col,
+            startX: event.clientX,
+            startY: event.clientY,
+            active: false
+          };
           setDragging(true);
           onSelectionChange(
             event.shiftKey
@@ -1485,8 +1537,10 @@ export function GridEditor({
           );
           focusGridInput();
         }}
-        onPointerEnter={() => {
-          updateDragSelection(row, col);
+        onPointerEnter={(event) => {
+          if (activateDragSelection(event.clientX, event.clientY)) {
+            updateDragSelection(row, col);
+          }
         }}
         onDoubleClick={(event) => {
           if ((event.target as HTMLElement).closest(".cell-editor")) {
@@ -1955,7 +2009,7 @@ export function GridEditor({
         onCut={handleCut}
         onPaste={handlePaste}
         onPointerMove={(event) => {
-          if (dragging) {
+          if (dragAnchorRef.current) {
             updateDragSelectionFromPointer(event.clientX, event.clientY);
           }
         }}

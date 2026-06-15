@@ -283,7 +283,7 @@ async function runSmokeTestWhenLoaded(window) {
             }
             await new Promise((resolve) => setTimeout(resolve, 50));
           }
-          throw new Error(label);
+          throw new Error(label + ": " + (document.querySelector(".grid-status")?.textContent ?? ""));
         };
         const findButton = (text) =>
           Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === text);
@@ -296,6 +296,15 @@ async function runSmokeTestWhenLoaded(window) {
             bubbles: true,
             cancelable: true,
             button: 0,
+            pointerId: 1,
+            ...options
+          }));
+        };
+        const pointerMoveElement = (element, options = {}) => {
+          const EventClass = window.PointerEvent || window.MouseEvent;
+          element.dispatchEvent(new EventClass("pointermove", {
+            bubbles: true,
+            cancelable: true,
             pointerId: 1,
             ...options
           }));
@@ -314,6 +323,13 @@ async function runSmokeTestWhenLoaded(window) {
             pointerId: 1,
             ...options
           }));
+        };
+        const elementCenter = (element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2
+          };
         };
         const pointerUpWindow = (options = {}) => {
           const EventClass = window.PointerEvent || window.MouseEvent;
@@ -399,10 +415,12 @@ async function runSmokeTestWhenLoaded(window) {
         const detailHeightAfter = detailEditor ? Math.round(detailEditor.getBoundingClientRect().height) : 0;
         const cellA1 = document.querySelector(".grid-cell[aria-label='A1']");
         const cellB2 = document.querySelector(".grid-cell[aria-label='B2']");
-        pointerDownElement(cellA1);
+        pointerDownElement(cellA1, elementCenter(cellA1));
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"), "single selection not reflected");
-        pointerDownElement(cellB2, { shiftKey: true });
+        pointerUpWindow(elementCenter(cellA1));
+        pointerDownElement(cellB2, { ...elementCenter(cellB2), shiftKey: true });
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "shift selection not reflected");
+        pointerUpWindow(elementCenter(cellB2));
         const filterButton = document.querySelector("button[aria-label='筛选 B 列']");
         if (!filterButton) {
           throw new Error("column filter button missing");
@@ -439,17 +457,20 @@ async function runSmokeTestWhenLoaded(window) {
         await waitFor(() => document.querySelector(".grid-cell[aria-label='A2']"), "filter did not restore data row");
         const restoredCellA1 = document.querySelector(".grid-cell[aria-label='A1']");
         const restoredCellB2 = document.querySelector(".grid-cell[aria-label='B2']");
-        pointerDownElement(restoredCellA1);
+        pointerDownElement(restoredCellA1, elementCenter(restoredCellA1));
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"), "single selection not restored");
-        pointerDownElement(restoredCellB2, { shiftKey: true });
+        pointerUpWindow(elementCenter(restoredCellA1));
+        pointerDownElement(restoredCellB2, { ...elementCenter(restoredCellB2), shiftKey: true });
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "shift selection not restored");
+        pointerUpWindow(elementCenter(restoredCellB2));
         const columnHeaderB = document.querySelector("[role='columnheader'][aria-label='Column B']");
         const columnHeaderD = document.querySelector("[role='columnheader'][aria-label='Column D']");
         if (!columnHeaderB || !columnHeaderD) {
           throw new Error("column drag headers missing");
         }
-        pointerDownElement(columnHeaderB);
-        pointerEnterElement(columnHeaderD);
+        pointerDownElement(columnHeaderB, elementCenter(columnHeaderB));
+        pointerMoveElement(columnHeaderD, elementCenter(columnHeaderD));
+        pointerEnterElement(columnHeaderD, elementCenter(columnHeaderD));
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 3"), "column header drag selection not reflected");
         const columnHeaderDragStatus = document.querySelector(".grid-status")?.textContent ?? "";
         pointerUpWindow();
@@ -458,8 +479,9 @@ async function runSmokeTestWhenLoaded(window) {
         if (!rowHeader1 || !rowHeader2) {
           throw new Error("row drag headers missing");
         }
-        pointerDownElement(rowHeader1);
-        pointerEnterElement(rowHeader2);
+        pointerDownElement(rowHeader1, elementCenter(rowHeader1));
+        pointerMoveElement(rowHeader2, elementCenter(rowHeader2));
+        pointerEnterElement(rowHeader2, elementCenter(rowHeader2));
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "row header drag selection not reflected");
         const rowHeaderDragStatus = document.querySelector(".grid-status")?.textContent ?? "";
         pointerUpWindow();
