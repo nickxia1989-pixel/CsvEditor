@@ -194,7 +194,7 @@ button {
 .favorites-section {
   display: flex;
   min-height: 0;
-  max-height: 152px;
+  max-height: 468px;
   flex-direction: column;
   gap: 5px;
   padding: 0 10px 9px;
