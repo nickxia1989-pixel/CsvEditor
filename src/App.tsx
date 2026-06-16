@@ -23,7 +23,6 @@ import { TabStrip } from "./components/TabStrip";
 import {
   maxColumnCount,
   parseCsvText,
-  replaceAllCellText,
   replaceCellText,
   readCell,
   unparseCsvData,
@@ -83,6 +82,7 @@ import type {
   CsvCellUpdate,
   CsvColumnFilters,
   CsvFavoriteFile,
+  CsvFindSnapshot,
   CsvTab,
   FindResultCell,
   GridScrollPosition,
@@ -462,7 +462,8 @@ export function App() {
           cellStyles: current.cellStyles,
           autoRefresh: current.autoRefresh,
           findQuery: current.findQuery,
-          replaceValue: current.replaceValue
+          replaceValue: current.replaceValue,
+          findSnapshot: current.findSnapshot
         }));
         notify("success", `已刷新 ${tab.name}`);
       } catch (error) {
@@ -665,7 +666,8 @@ export function App() {
                 cellStyles: current.cellStyles,
                 autoRefresh: current.autoRefresh,
                 findQuery: current.findQuery,
-                replaceValue: current.replaceValue
+                replaceValue: current.replaceValue,
+                findSnapshot: current.findSnapshot
               };
             });
           }
@@ -1097,51 +1099,35 @@ export function App() {
             }
             onSetFindQuery={(findQuery) => updateActiveTab((tab) => ({ ...tab, findQuery }))}
             onSetReplaceValue={(replaceValue) => updateActiveTab((tab) => ({ ...tab, replaceValue }))}
+            onSetFindSnapshot={(findSnapshot: CsvFindSnapshot | null) => updateActiveTab((tab) => ({ ...tab, findSnapshot }))}
             onSetStatus={(status) => updateActiveTab((tab) => ({ ...tab, status }))}
             onEditDraftDirtyChange={setActiveEditDraftDirty}
-            onReplaceCurrent={() =>
+            onReplaceCurrent={(query) =>
               updateActiveTab((tab) => {
-                const query = tab.findQuery.trim();
+                const normalizedQuery = query.trim();
                 const { focusRow, focusCol } = tab.selection;
-                if (!query || tab.lockedCells.includes(cellKey(focusRow, focusCol))) {
+                if (!normalizedQuery) {
                   return tab;
                 }
-                if (!readCell(tab.data, focusRow, focusCol).toLowerCase().includes(query.toLowerCase())) {
+                if (tab.lockedCells.includes(cellKey(focusRow, focusCol))) {
+                  return { ...tab, status: "当前格已锁定，不能替换" };
+                }
+                if (!readCell(tab.data, focusRow, focusCol).toLowerCase().includes(normalizedQuery.toLowerCase())) {
                   return { ...tab, status: "当前格没有匹配内容" };
                 }
                 const base = pushUndo(tab);
                 return {
                   ...base,
-                  data: replaceCellText(base.data, focusRow, focusCol, query, base.replaceValue),
+                  data: replaceCellText(base.data, focusRow, focusCol, normalizedQuery, base.replaceValue),
                   dirty: true,
                   status: "已替换当前匹配"
                 };
               })
             }
-            onReplaceAll={() =>
+            onReplaceFindResults={(results, query) =>
               updateActiveTab((tab) => {
-                const result = replaceAllCellText(
-                  tab.data,
-                  tab.findQuery,
-                  tab.replaceValue,
-                  new Set(tab.lockedCells)
-                );
-                if (result.count === 0) {
-                  return { ...tab, status: "没有可替换的匹配内容" };
-                }
-                const base = pushUndo(tab);
-                return {
-                  ...base,
-                  data: result.data,
-                  dirty: true,
-                  status: `已替换 ${result.count} 处`
-                };
-              })
-            }
-            onReplaceFindResults={(results) =>
-              updateActiveTab((tab) => {
-                const query = tab.findQuery.trim();
-                if (!query || results.length === 0) {
+                const normalizedQuery = query.trim();
+                if (!normalizedQuery || results.length === 0) {
                   return tab;
                 }
                 const locked = new Set(tab.lockedCells);
@@ -1159,20 +1145,20 @@ export function App() {
                     skippedLocked += 1;
                     continue;
                   }
-                  const replacement = replaceAllMatchesInCell(data, result.row, result.col, query, tab.replaceValue);
+                  const replacement = replaceAllMatchesInCell(data, result.row, result.col, normalizedQuery, tab.replaceValue);
                   data = replacement.data;
                   count += replacement.count;
                 }
                 const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 格` : "";
                 if (count === 0) {
-                  return { ...tab, status: `没有可替换的结果${lockStatus}` };
+                  return { ...tab, status: `没有可替换的匹配内容${lockStatus}` };
                 }
                 const base = pushUndo(tab);
                 return {
                   ...base,
                   data,
                   dirty: true,
-                  status: `已替换结果 ${count} 处${lockStatus}`
+                  status: `已替换 ${count} 处${lockStatus}`
                 };
               })
             }

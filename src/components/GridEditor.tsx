@@ -29,6 +29,7 @@ import {
 import type {
   CsvCellStyle,
   CsvCellUpdate,
+  CsvFindSnapshot,
   CsvMatrix,
   CsvSelection,
   CsvTab,
@@ -72,13 +73,13 @@ type GridEditorProps = {
   onSetAutoRefresh(enabled: boolean): void;
   onSetFindQuery(query: string): void;
   onSetReplaceValue(value: string): void;
+  onSetFindSnapshot(snapshot: CsvFindSnapshot | null): void;
   onSetStatus(status: string): void;
   onEditDraftDirtyChange(dirty: boolean): void;
   scrollPosition: GridScrollPosition;
   onScrollPositionChange(tabId: string, position: GridScrollPosition): void;
-  onReplaceCurrent(): void;
-  onReplaceAll(): void;
-  onReplaceFindResults(results: FindResultCell[]): void;
+  onReplaceCurrent(query: string): void;
+  onReplaceFindResults(results: FindResultCell[], query: string): void;
   onApplyCellStyle(
     startRow: number,
     startCol: number,
@@ -176,12 +177,12 @@ export function GridEditor({
   onSetAutoRefresh,
   onSetFindQuery,
   onSetReplaceValue,
+  onSetFindSnapshot,
   onSetStatus,
   onEditDraftDirtyChange,
   scrollPosition,
   onScrollPositionChange,
   onReplaceCurrent,
-  onReplaceAll,
   onReplaceFindResults,
   onApplyCellStyle,
   onApplyCellStyleToCells,
@@ -215,7 +216,6 @@ export function GridEditor({
   const [editing, setEditing] = useState<EditingCell>(null);
   const [dragging, setDragging] = useState(false);
   const [findPanelOpen, setFindPanelOpen] = useState(false);
-  const [findInSelection, setFindInSelection] = useState(false);
   const [resizeState, setResizeState] = useState<{
     col: number;
     startX: number;
@@ -228,7 +228,6 @@ export function GridEditor({
 
   useEffect(() => {
     setFindPanelOpen(false);
-    setFindInSelection(false);
     setFilterMenu(null);
   }, [tab.id]);
 
@@ -810,68 +809,76 @@ export function GridEditor({
       ? writeCell(tab.data, editing.row, editing.col, editing.value)
       : tab.data;
 
-  const findResults = useMemo(() => {
-    const query = tab.findQuery.trim().toLowerCase();
-    if (!query) {
-      return [];
+  const buildFindSnapshot = (): CsvFindSnapshot | null => {
+    const normalizedQuery = tab.findQuery.trim();
+    if (!normalizedQuery) {
+      return null;
     }
-
     const searchableData = dataWithEditingDraft();
     const usedEndRow = searchableData.length - 1;
     const usedEndCol = maxColumnCount(searchableData) - 1;
     if (usedEndRow < 0 || usedEndCol < 0) {
-      return [];
+      return {
+        query: normalizedQuery,
+        scope: {
+          mode: "table",
+          startRow: 0,
+          endRow: 0,
+          startCol: 0,
+          endCol: 0,
+          visibleOnly: hasActiveFilters
+        },
+        results: []
+      };
     }
 
-    const scope = findInSelection
+    const selectedCellCount =
+      (selectionRange.endRow - selectionRange.startRow + 1) * (selectionRange.endCol - selectionRange.startCol + 1);
+    const useSelectionScope = selectedCellCount > 1;
+    const scope = useSelectionScope
       ? {
+          mode: "selection" as const,
           startRow: Math.max(0, selectionRange.startRow),
           endRow: Math.min(selectionRange.endRow, usedEndRow),
           startCol: Math.max(0, selectionRange.startCol),
-          endCol: Math.min(selectionRange.endCol, usedEndCol)
+          endCol: Math.min(selectionRange.endCol, usedEndCol),
+          visibleOnly: hasActiveFilters
         }
       : {
+          mode: "table" as const,
           startRow: 0,
           endRow: usedEndRow,
           startCol: 0,
-          endCol: usedEndCol
+          endCol: usedEndCol,
+          visibleOnly: hasActiveFilters
         };
 
     if (scope.startRow > scope.endRow || scope.startCol > scope.endCol) {
-      return [];
+      return { query: normalizedQuery, scope, results: [] };
     }
 
-    const results: Array<FindResultCell & { value: string; locked: boolean }> = [];
+    const results: CsvFindSnapshot["results"] = [];
+    const lowerQuery = normalizedQuery.toLowerCase();
     for (let row = scope.startRow; row <= scope.endRow; row += 1) {
       if (hasActiveFilters && !isRowVisible(row)) {
         continue;
       }
       for (let col = scope.startCol; col <= scope.endCol; col += 1) {
         const value = readCell(searchableData, row, col);
-        if (value.toLowerCase().includes(query)) {
+        if (value.toLowerCase().includes(lowerQuery)) {
           results.push({ row, col, value, locked: lockedSet.has(cellKey(row, col)) });
         }
       }
     }
-    return results;
-  }, [
-    editing,
-    findInSelection,
-    hasActiveFilters,
-    lockedSet,
-    rowDisplayIndexMap,
-    selectionRange.endCol,
-    selectionRange.endRow,
-    selectionRange.startCol,
-    selectionRange.startRow,
-    tab.data,
-    tab.findQuery
-  ]);
+    return { query: normalizedQuery, scope, results };
+  };
 
+  const findResults = tab.findSnapshot?.results ?? [];
+  const findSnapshotMatchesInput = Boolean(tab.findSnapshot && tab.findSnapshot.query === tab.findQuery.trim());
   const activeFindResultIndex = findResults.findIndex(
     (result) => result.row === tab.selection.focusRow && result.col === tab.selection.focusCol
   );
-  const visibleFindResults = findResults.slice(0, 100);
+  const visibleFindResults = findResults.slice(0, 500);
 
   const copySelectionToInternalBuffer = (statusSuffix = "") => {
     const text = hasActiveFilters
@@ -963,13 +970,33 @@ export function GridEditor({
     }, 0);
   };
 
-  const focusFindInput = () => {
+  const openFindPanel = () => {
     setFindPanelOpen(true);
     window.requestAnimationFrame(() => {
       findInputRef.current?.focus({ preventScroll: true });
       findInputRef.current?.select();
     });
   };
+
+  const closeFindPanel = () => {
+    setFindPanelOpen(false);
+    focusGridInputSoon();
+  };
+
+  useEffect(() => {
+    const handleFindShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        if (findPanelOpen) {
+          closeFindPanel();
+        } else {
+          openFindPanel();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleFindShortcut);
+    return () => window.removeEventListener("keydown", handleFindShortcut);
+  }, [findPanelOpen]);
 
   const applySelectionStyle = (stylePatch: Partial<CsvCellStyle>) => {
     runAfterCommittingEditAndClearingCopiedRange(() => {
@@ -987,8 +1014,42 @@ export function GridEditor({
     });
   };
 
+  const jumpToFindResult = (result: FindResultCell) => {
+    requestSelectionScroll();
+    onSelectionChange(singleCellSelection(result.row, result.col));
+  };
+
+  const confirmFind = (select: "first" | "last" | "none" = "first") => {
+    setFindPanelOpen(true);
+    commitEditing(false);
+    const snapshot = buildFindSnapshot();
+    onSetFindSnapshot(snapshot);
+    if (!snapshot) {
+      onSetStatus("请输入查找内容");
+      return null;
+    }
+    const scopeText = describeFindScope(snapshot.scope);
+    if (snapshot.results.length === 0) {
+      onSetStatus(`${scopeText}没有匹配内容`);
+      return snapshot;
+    }
+    if (select !== "none") {
+      jumpToFindResult(select === "first" ? snapshot.results[0] : snapshot.results[snapshot.results.length - 1]);
+    }
+    onSetStatus(`${scopeText}找到 ${snapshot.results.length} 项`);
+    return snapshot;
+  };
+
   const runFind = (direction: "next" | "previous") => {
     setFindPanelOpen(true);
+    if (!tab.findQuery.trim()) {
+      onSetStatus("请输入查找内容");
+      return;
+    }
+    if (!tab.findSnapshot || !findSnapshotMatchesInput) {
+      confirmFind(direction === "next" ? "first" : "last");
+      return;
+    }
     const nextIndex = getAdjacentFindResultIndex(
       findResults,
       tab.selection.focusRow,
@@ -998,11 +1059,34 @@ export function GridEditor({
     commitEditing(false);
     if (nextIndex >= 0) {
       const result = findResults[nextIndex];
-      requestSelectionScroll();
-      onSelectionChange(singleCellSelection(result.row, result.col));
-    } else if (findAvailable) {
-      onSetStatus(findInSelection ? "选区内没有匹配内容" : "没有匹配内容");
+      jumpToFindResult(result);
+    } else {
+      onSetStatus(`${describeFindScope(tab.findSnapshot.scope)}没有匹配内容`);
     }
+  };
+
+  const replaceCurrentMatch = () => {
+    const query = tab.findSnapshot && findSnapshotMatchesInput ? tab.findSnapshot.query : tab.findQuery.trim();
+    if (!query) {
+      onSetStatus("请输入查找内容");
+      return;
+    }
+    runAfterCommittingEditAndClearingCopiedRange(() => onReplaceCurrent(query));
+  };
+
+  const replaceAllMatches = () => {
+    let snapshot = tab.findSnapshot && findSnapshotMatchesInput ? tab.findSnapshot : null;
+    if (!snapshot) {
+      snapshot = confirmFind("none");
+    }
+    if (!snapshot) {
+      return;
+    }
+    if (snapshot.results.length === 0) {
+      onSetStatus(`${describeFindScope(snapshot.scope)}没有可替换的匹配内容`);
+      return;
+    }
+    runAfterCommittingEditAndClearingCopiedRange(() => onReplaceFindResults(snapshot.results, snapshot.query));
   };
 
   const handleGridKeyDown = async (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1025,12 +1109,6 @@ export function GridEditor({
       event.preventDefault();
       clearCopiedState();
       onRedo();
-      return;
-    }
-
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
-      event.preventDefault();
-      focusFindInput();
       return;
     }
 
@@ -1570,11 +1648,7 @@ export function GridEditor({
             }}
             onBlur={() => commitEditing(false)}
             onKeyDown={(event) => {
-              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
-                event.preventDefault();
-                event.stopPropagation();
-                focusFindInput();
-              } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
                 event.preventDefault();
                 event.stopPropagation();
                 commitEditingAndRequestSave();
@@ -1604,7 +1678,7 @@ export function GridEditor({
   };
 
   return (
-    <section className="grid-shell">
+    <section className={`grid-shell ${findPanelOpen ? "has-find-panel" : ""}`}>
       <div className="grid-tools">
         <div className="tool-group history-tools">
           <button
@@ -1732,70 +1806,6 @@ export function GridEditor({
             增列
           </button>
         </div>
-        <div className="tool-group find-tools">
-          <label className="grid-search">
-            <Search size={15} />
-            <input
-              ref={findInputRef}
-              value={tab.findQuery}
-              onFocus={() => setFindPanelOpen(true)}
-              onChange={(event) => {
-                setFindPanelOpen(true);
-                onSetFindQuery(event.target.value);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  runFind(event.shiftKey ? "previous" : "next");
-                }
-              }}
-              placeholder="查找"
-              aria-label="查找"
-            />
-          </label>
-          <label className={`toggle-chip ${findInSelection ? "active-toggle" : ""}`} title="只在当前选区内查找和替换结果">
-            <input
-              type="checkbox"
-              checked={findInSelection}
-              onChange={(event) => {
-                setFindPanelOpen(true);
-                setFindInSelection(event.target.checked);
-              }}
-              aria-label="仅在选区查找"
-            />
-            选区内
-          </label>
-          <span className="find-count" title="当前查找结果数量">
-            {findAvailable ? `${findResults.length} 项` : "0 项"}
-          </span>
-          <label className="grid-search replace-box">
-            <input
-              value={tab.replaceValue}
-              onChange={(event) => onSetReplaceValue(event.target.value)}
-              placeholder="替换为"
-              aria-label="替换为"
-            />
-          </label>
-          <button className="icon-button" onClick={() => runFind("previous")} disabled={!findAvailable} title="上一处" aria-label="上一处">
-            <ChevronUp size={15} />
-          </button>
-          <button className="icon-button" onClick={() => runFind("next")} disabled={!findAvailable} title="下一处" aria-label="下一处">
-            <ChevronDown size={15} />
-          </button>
-          <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onReplaceCurrent)} disabled={!findAvailable}>
-            替换
-          </button>
-          <button
-            className="tool-button"
-            onClick={() => runAfterCommittingEditAndClearingCopiedRange(() => onReplaceFindResults(findResults))}
-            disabled={!findAvailable || findResults.length === 0}
-          >
-            替换结果
-          </button>
-          <button className="tool-button" onClick={() => runAfterCommittingEditAndClearingCopiedRange(onReplaceAll)} disabled={!findAvailable}>
-            全部替换
-          </button>
-        </div>
         <div className="tool-group color-tools" role="group" aria-label="单元格颜色">
           <label className="color-picker" title="文字颜色">
             <Type size={14} />
@@ -1868,48 +1878,6 @@ export function GridEditor({
         />
         <span className={`lock-state ${selectedLocked ? "locked" : ""}`}>{selectedLocked ? "已锁定" : "可编辑"}</span>
       </div>
-
-      {findPanelOpen && findAvailable ? (
-        <div className="find-results-panel" aria-label="查找结果">
-          <div className="find-results-summary">
-            <Search size={14} />
-            <span>
-              {findInSelection ? "选区" : "全表"}找到 {findResults.length} 项
-              {activeFindResultIndex >= 0 ? `，当前第 ${activeFindResultIndex + 1} 项` : ""}
-            </span>
-            <button className="icon-button" onClick={() => setFindPanelOpen(false)} title="收起查找结果" aria-label="收起查找结果">
-              <ChevronUp size={14} />
-            </button>
-          </div>
-          <div className="find-result-list">
-            {visibleFindResults.length > 0 ? (
-              visibleFindResults.map((result, index) => (
-                <button
-                  key={`${result.row}:${result.col}`}
-                  className={`find-result ${activeFindResultIndex === index ? "active" : ""}`}
-                  onClick={() => {
-                    commitEditing(false);
-                    requestSelectionScroll();
-                    onSelectionChange(singleCellSelection(result.row, result.col));
-                    focusGridInputSoon();
-                  }}
-                  title={result.value}
-                  aria-label={`跳转到 ${columnName(result.col)}${result.row + 1}`}
-                >
-                  <span className="find-result-cell">{columnName(result.col)}{result.row + 1}</span>
-                  <span className="find-result-preview">{formatCellValuePreview(result.value)}</span>
-                  {result.locked ? <span className="find-result-lock">锁</span> : null}
-                </button>
-              ))
-            ) : (
-              <span className="find-result-empty">没有匹配内容</span>
-            )}
-            {findResults.length > visibleFindResults.length ? (
-              <span className="find-result-more">仅显示前 {visibleFindResults.length} 项</span>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
       {filterMenu ? (
         <div
@@ -1992,6 +1960,7 @@ export function GridEditor({
         </div>
       ) : null}
 
+      <div className="grid-workarea">
       <div
         className="grid-viewport"
         role="grid"
@@ -2090,6 +2059,115 @@ export function GridEditor({
         <div className="grid-canvas" style={{ width: totalWidth, height: totalHeight }}>
           {bodyRows.flatMap((row) => bodyCols.map((col) => renderCell(row, col, "body")))}
         </div>
+      </div>
+
+      {findPanelOpen ? (
+        <aside className="find-side-panel" aria-label="查找与替换">
+          <div className="find-panel-header">
+            <span>查找与替换</span>
+            <button className="icon-button" onClick={() => setFindPanelOpen(false)} title="关闭查找" aria-label="关闭查找">
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="find-panel-fields">
+            <label className="find-field">
+              <span>查找内容</span>
+              <div className="find-field-input">
+                <Search size={15} />
+                <input
+                  ref={findInputRef}
+                  value={tab.findQuery}
+                  onChange={(event) => onSetFindQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      confirmFind(event.shiftKey ? "last" : "first");
+                    }
+                  }}
+                  aria-label="查找内容"
+                />
+              </div>
+            </label>
+            <label className="find-field">
+              <span>替换为</span>
+              <input
+                className="find-replace-input"
+                value={tab.replaceValue}
+                onChange={(event) => onSetReplaceValue(event.target.value)}
+                aria-label="替换为"
+              />
+            </label>
+          </div>
+
+          <div className="find-panel-actions">
+            <button className="tool-button primary-find-action" onClick={() => confirmFind("first")} disabled={!findAvailable}>
+              <Search size={15} />
+              查找
+            </button>
+            <button className="tool-button" onClick={() => onSetFindSnapshot(null)} disabled={!tab.findSnapshot}>
+              <X size={15} />
+              清除结果
+            </button>
+            <button className="tool-button" onClick={() => runFind("previous")} disabled={!findAvailable}>
+              <ChevronUp size={15} />
+              上一处
+            </button>
+            <button className="tool-button" onClick={() => runFind("next")} disabled={!findAvailable}>
+              <ChevronDown size={15} />
+              下一处
+            </button>
+            <button className="tool-button" onClick={replaceCurrentMatch} disabled={!findAvailable}>
+              替换
+            </button>
+            <button className="tool-button" onClick={replaceAllMatches} disabled={!findAvailable}>
+              全部替换
+            </button>
+          </div>
+
+          <div className="find-results-summary">
+            {tab.findSnapshot ? (
+              <span>
+                {findResults.length} 项 · {describeFindScope(tab.findSnapshot.scope)}
+                {activeFindResultIndex >= 0 ? ` · 第 ${activeFindResultIndex + 1} 项` : ""}
+                {!findSnapshotMatchesInput ? ` · 来自 "${formatInlinePreview(tab.findSnapshot.query)}"` : ""}
+              </span>
+            ) : (
+              <span>0 项</span>
+            )}
+          </div>
+
+          <div className="find-result-list">
+            {tab.findSnapshot && visibleFindResults.length > 0 ? (
+              visibleFindResults.map((result, index) => (
+                <button
+                  key={`${result.row}:${result.col}`}
+                  className={`find-result ${activeFindResultIndex === index ? "active" : ""}`}
+                  onClick={() => {
+                    commitEditing(false);
+                    jumpToFindResult(result);
+                    focusGridInputSoon();
+                  }}
+                  title={result.value}
+                  aria-label={`跳转到 ${columnName(result.col)}${result.row + 1}`}
+                >
+                  <span className="find-result-cell">
+                    {columnName(result.col)}
+                    {result.row + 1}
+                  </span>
+                  <span className="find-result-preview">{formatCellValuePreview(result.value)}</span>
+                  {result.locked ? <span className="find-result-lock">锁</span> : null}
+                </button>
+              ))
+            ) : (
+              <span className="find-result-empty">{tab.findSnapshot ? "没有匹配内容" : "无结果"}</span>
+            )}
+            {findResults.length > visibleFindResults.length ? (
+              <span className="find-result-more">仅显示前 {visibleFindResults.length} 项</span>
+            ) : null}
+          </div>
+        </aside>
+      ) : null}
       </div>
 
       <div className="grid-status">
@@ -2377,4 +2455,17 @@ function compareCellPosition(cell: FindResultCell, row: number, col: number): nu
 function formatCellValuePreview(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > 72 ? `${compact.slice(0, 72)}...` : compact || "(空)";
+}
+
+function formatInlinePreview(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > 18 ? `${compact.slice(0, 18)}...` : compact || "(空)";
+}
+
+function describeFindScope(scope: CsvFindSnapshot["scope"]): string {
+  const label =
+    scope.mode === "selection"
+      ? `选区 ${columnName(scope.startCol)}${scope.startRow + 1}:${columnName(scope.endCol)}${scope.endRow + 1}`
+      : "全表";
+  return scope.visibleOnly ? `${label}（可见行）` : label;
 }

@@ -36,6 +36,7 @@ function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
     autoRefresh: true,
     findQuery: "wolf",
     replaceValue: "fox",
+    findSnapshot: null,
     lockedCells: [],
     cellStyles: {},
     selection: singleCellSelection(0, 0),
@@ -72,12 +73,12 @@ function createGridProps(tab = createTab()) {
     onSetAutoRefresh: vi.fn(),
     onSetFindQuery: vi.fn(),
     onSetReplaceValue: vi.fn(),
+    onSetFindSnapshot: vi.fn(),
     onSetStatus: vi.fn(),
     onEditDraftDirtyChange: vi.fn(),
     scrollPosition: { scrollTop: 0, scrollLeft: 0 },
     onScrollPositionChange: vi.fn(),
     onReplaceCurrent: vi.fn(),
-    onReplaceAll: vi.fn(),
     onReplaceFindResults: vi.fn(),
     onApplyCellStyle: vi.fn(),
     onApplyCellStyleToCells: vi.fn(),
@@ -130,6 +131,10 @@ function mockGridRect(grid: HTMLElement) {
       toJSON: () => ({})
     })
   });
+}
+
+function openFindPanel() {
+  fireEvent.keyDown(window, { key: "f", ctrlKey: true });
 }
 
 describe("GridEditor editing workflow", () => {
@@ -346,6 +351,7 @@ describe("GridEditor editing workflow", () => {
 describe("GridEditor toolbar", () => {
   it("jumps to the next matching cell from the find control", () => {
     const props = renderGrid();
+    openFindPanel();
     fireEvent.click(screen.getByRole("button", { name: "下一处" }));
     expect(props.onSelectionChange).toHaveBeenCalledWith(singleCellSelection(2, 1));
   });
@@ -357,6 +363,7 @@ describe("GridEditor toolbar", () => {
       findQuery: "wolf"
     }));
 
+    openFindPanel();
     fireEvent.doubleClick(screen.getByRole("gridcell", { name: "B1" }));
     const editor = container.querySelector(".cell-editor") as HTMLInputElement;
     fireEvent.change(editor, { target: { value: "Forest Wolf" } });
@@ -372,48 +379,90 @@ describe("GridEditor toolbar", () => {
 
     fireEvent.keyDown(keyProxy, { key: "f", ctrlKey: true });
 
-    await waitFor(() => expect(screen.getByLabelText("查找")).toHaveFocus());
+    await waitFor(() => expect(screen.getByLabelText("查找内容")).toHaveFocus());
   });
 
-  it("limits find results to the selected range and jumps from the result list", async () => {
-    const props = renderGrid(createTab({
+  it("toggles the find side panel with Ctrl+F", async () => {
+    renderGrid();
+
+    openFindPanel();
+    await waitFor(() => expect(screen.getByLabelText("查找与替换")).toBeInTheDocument());
+
+    openFindPanel();
+    await waitFor(() => expect(screen.queryByLabelText("查找与替换")).not.toBeInTheDocument());
+  });
+
+  it("uses the selected multi-cell range for a confirmed search and jumps from the result list", async () => {
+    const tab = createTab({
       data: [
-        ["Alpha Wolf", "Name"],
-        ["1001", "Forest Wolf"],
-        ["1002", "Wolf Den"]
+        ["Alpha Wolf", "Name", "Kind"],
+        ["1001", "Forest Wolf", "Beast"],
+        ["1002", "Wolf Den", "Place"]
       ],
-      selection: singleCellSelection(1, 1)
+      selection: { anchorRow: 1, anchorCol: 1, focusRow: 1, focusCol: 2 }
+    });
+    const { props, rerender } = renderGridWithResult(tab);
+
+    openFindPanel();
+    fireEvent.click(screen.getByRole("button", { name: "查找" }));
+
+    const snapshot = props.onSetFindSnapshot.mock.calls.at(-1)?.[0];
+    expect(snapshot).toEqual(expect.objectContaining({
+      query: "wolf",
+      results: [expect.objectContaining({ row: 1, col: 1 })]
     }));
 
-    fireEvent.click(screen.getByRole("button", { name: "下一处" }));
-    await waitFor(() => expect(screen.getByText((text) => text.includes("全表找到 3 项"))).toBeInTheDocument());
-
-    fireEvent.click(screen.getByLabelText("仅在选区查找"));
-
-    await waitFor(() => expect(screen.getByText((text) => text.includes("选区找到 1 项"))).toBeInTheDocument());
+    rerender(<GridEditor {...props} tab={createTab({ ...tab, findSnapshot: snapshot })} />);
+    await waitFor(() => expect(screen.getByText((text) => text.includes("1 项") && text.includes("选区 B2:C2"))).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "跳转到 A1" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "跳转到 B2" }));
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(1, 1));
   });
 
-  it("passes the current find result list to batch replace", () => {
-    const props = renderGrid(createTab({
+  it("keeps confirmed results stable while the find input changes", () => {
+    const tab = createTab({
       data: [
         ["Alpha Wolf", "Name"],
         ["1001", "Forest Wolf"]
       ],
-      selection: singleCellSelection(1, 1)
-    }));
+      selection: singleCellSelection(0, 0)
+    });
+    const { props, rerender } = renderGridWithResult(tab);
 
-    fireEvent.focus(screen.getByLabelText("查找"));
-    fireEvent.click(screen.getByLabelText("仅在选区查找"));
-    fireEvent.click(screen.getByRole("button", { name: "替换结果" }));
+    openFindPanel();
+    fireEvent.click(screen.getByRole("button", { name: "查找" }));
+    const snapshot = props.onSetFindSnapshot.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ ...tab, findSnapshot: snapshot })} />);
+
+    fireEvent.change(screen.getByLabelText("查找内容"), { target: { value: "slime" } });
+    rerender(<GridEditor {...props} tab={createTab({ ...tab, findQuery: "slime", findSnapshot: snapshot })} />);
+
+    expect(screen.getByText((text) => text.includes("2 项") && text.includes("来自 \"wolf\""))).toBeInTheDocument();
+  });
+
+  it("passes the confirmed find result list to replace all", () => {
+    const tab = createTab({
+      data: [
+        ["Alpha Wolf", "Name"],
+        ["1001", "Forest Wolf"]
+      ],
+      selection: singleCellSelection(0, 0)
+    });
+    const { props, rerender } = renderGridWithResult(tab);
+
+    openFindPanel();
+    fireEvent.click(screen.getByRole("button", { name: "查找" }));
+    const snapshot = props.onSetFindSnapshot.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ ...tab, findSnapshot: snapshot })} />);
+    fireEvent.click(screen.getByRole("button", { name: "全部替换" }));
 
     expect(props.onReplaceFindResults).toHaveBeenCalledTimes(1);
     expect(props.onReplaceFindResults.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ row: 0, col: 0 }),
       expect.objectContaining({ row: 1, col: 1 })
     ]);
+    expect(props.onReplaceFindResults.mock.calls[0][1]).toBe("wolf");
   });
 
   it("opens an Excel-like column filter menu and applies checked values in sheet order", () => {
@@ -610,20 +659,23 @@ describe("GridEditor toolbar", () => {
     ], { textColor: "#1d4ed8" });
   });
 
-  it("resets selected-range find mode when switching tabs", async () => {
-    const { props, rerender } = renderGridWithResult(createTab({
+  it("keeps confirmed find results scoped to the active tab", async () => {
+    const firstTab = createTab({
       data: [
         ["Alpha Wolf", "Name"],
         ["1001", "Forest Wolf"]
       ],
-      selection: singleCellSelection(1, 1)
-    }));
+      selection: singleCellSelection(0, 0)
+    });
+    const { props, rerender } = renderGridWithResult(firstTab);
 
-    fireEvent.focus(screen.getByLabelText("查找"));
-    fireEvent.click(screen.getByLabelText("仅在选区查找"));
-    expect(screen.getByLabelText("仅在选区查找")).toBeChecked();
+    openFindPanel();
+    fireEvent.click(screen.getByRole("button", { name: "查找" }));
+    const firstSnapshot = props.onSetFindSnapshot.mock.calls.at(-1)?.[0];
+    rerender(<GridEditor {...props} tab={createTab({ ...firstTab, findSnapshot: firstSnapshot })} />);
+    expect(screen.getByText((text) => text.includes("2 项") && text.includes("全表"))).toBeInTheDocument();
 
-    rerender(<GridEditor {...props} tab={createTab({
+    const secondTab = createTab({
       id: "tab-2",
       name: "npc.csv",
       path: "Sample/npc.csv",
@@ -631,18 +683,20 @@ describe("GridEditor toolbar", () => {
         ["Wolf", "Name"],
         ["1001", "Forest Wolf"]
       ],
-      selection: singleCellSelection(0, 0)
-    })} />);
+      selection: singleCellSelection(0, 0),
+      findSnapshot: {
+        query: "wolf",
+        scope: { mode: "selection", startRow: 0, endRow: 0, startCol: 0, endCol: 1, visibleOnly: false },
+        results: [{ row: 0, col: 0, value: "Wolf", locked: false }]
+      }
+    });
 
-    await waitFor(() => expect(screen.getByLabelText("仅在选区查找")).not.toBeChecked());
-    expect(screen.getByText("2 项")).toBeInTheDocument();
+    rerender(<GridEditor {...props} tab={secondTab} />);
+    openFindPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: "替换结果" }));
-
-    expect(props.onReplaceFindResults).toHaveBeenCalledWith([
-      expect.objectContaining({ row: 0, col: 0 }),
-      expect.objectContaining({ row: 1, col: 1 })
-    ]);
+    expect(screen.getByText((text) => text.includes("1 项") && text.includes("选区 A1:B1"))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "跳转到 A1" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "跳转到 B2" })).not.toBeInTheDocument();
   });
 
   it("renders temporary cell colors and applies colors to the selected range", () => {
@@ -704,14 +758,15 @@ describe("GridEditor toolbar", () => {
     expect(props.onUndo).toHaveBeenCalledTimes(1);
   });
 
-  it("fires replace toolbar callbacks", () => {
+  it("fires replace callbacks from the find side panel", () => {
     const props = renderGrid();
 
+    openFindPanel();
     fireEvent.click(screen.getByRole("button", { name: "替换" }));
     fireEvent.click(screen.getByRole("button", { name: "全部替换" }));
 
-    expect(props.onReplaceCurrent).toHaveBeenCalledTimes(1);
-    expect(props.onReplaceAll).toHaveBeenCalledTimes(1);
+    expect(props.onReplaceCurrent).toHaveBeenCalledWith("wolf");
+    expect(props.onReplaceFindResults).toHaveBeenCalledWith([expect.objectContaining({ row: 2, col: 1 })], "wolf");
   });
 
   it("keeps the original anchor while dragging a cell range", async () => {

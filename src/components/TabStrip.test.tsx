@@ -33,6 +33,7 @@ function createTab(index: number, overrides: Partial<CsvTab> = {}): CsvTab {
     autoRefresh: true,
     findQuery: "",
     replaceValue: "",
+    findSnapshot: null,
     lockedCells: [],
     cellStyles: {},
     selection: singleCellSelection(0, 0),

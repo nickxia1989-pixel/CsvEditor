@@ -32,6 +32,7 @@ function makeTab(): CsvTab {
     autoRefresh: true,
     findQuery: "",
     replaceValue: "",
+    findSnapshot: null,
     lockedCells: [],
     cellStyles: {},
     selection: singleCellSelection(0, 0),

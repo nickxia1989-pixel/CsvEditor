@@ -27,6 +27,26 @@ export type FindResultCell = {
   col: number;
 };
 
+export type CsvFindResult = FindResultCell & {
+  value: string;
+  locked: boolean;
+};
+
+export type CsvFindScope = {
+  mode: "table" | "selection";
+  startRow: number;
+  endRow: number;
+  startCol: number;
+  endCol: number;
+  visibleOnly: boolean;
+};
+
+export type CsvFindSnapshot = {
+  query: string;
+  scope: CsvFindScope;
+  results: CsvFindResult[];
+};
+
 export type CsvCellUpdate = FindResultCell & {
   value: string;
 };
@@ -58,6 +78,7 @@ export type CsvTab = {
   autoRefresh: boolean;
   findQuery: string;
   replaceValue: string;
+  findSnapshot: CsvFindSnapshot | null;
   lockedCells: string[];
   cellStyles: CsvCellStyleMap;
   selection: CsvSelection;

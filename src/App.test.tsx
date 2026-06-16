@@ -1398,8 +1398,16 @@ describe("App local directory flow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "replace.csv" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
 
-    fireEvent.change(screen.getByLabelText("查找"), { target: { value: "wolf" } });
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    await waitFor(() => expect(screen.getByLabelText("查找内容")).toHaveFocus());
+    fireEvent.change(screen.getByLabelText("查找内容"), { target: { value: "wolf" } });
     fireEvent.change(screen.getByLabelText("替换为"), { target: { value: "Fox" } });
+    fireEvent.click(screen.getByRole("button", { name: "查找" }));
+    await waitFor(() =>
+      expect(
+        within(screen.getByLabelText("查找与替换")).getAllByText((text) => text.includes("2 项") && text.includes("全表"))[0]
+      ).toBeInTheDocument()
+    );
     fireEvent.click(screen.getByRole("button", { name: "下一处" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("Forest Wolf"));
 
@@ -1430,11 +1438,14 @@ describe("App local directory flow", () => {
     await waitFor(() => expect(screen.getByRole("gridcell", { name: "B2" })).toBeInTheDocument());
 
     fireEvent.pointerDown(screen.getByRole("gridcell", { name: "B2" }));
-    fireEvent.change(screen.getByLabelText("查找"), { target: { value: "wolf" } });
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "ArrowRight", shiftKey: true });
+    await waitFor(() => expect(screen.getByText((text) => text.includes("选区 1 x 2"))).toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    await waitFor(() => expect(screen.getByLabelText("查找内容")).toHaveFocus());
+    fireEvent.change(screen.getByLabelText("查找内容"), { target: { value: "wolf" } });
     fireEvent.change(screen.getByLabelText("替换为"), { target: { value: "Fox" } });
-    fireEvent.click(screen.getByLabelText("仅在选区查找"));
-    fireEvent.click(screen.getByRole("button", { name: "替换结果" }));
-    await waitFor(() => expect(screen.getByText("已替换结果 1 处")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "全部替换" }));
+    await waitFor(() => expect(screen.getByText("已替换 1 处")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 

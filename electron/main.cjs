@@ -350,6 +350,19 @@ async function runSmokeTestWhenLoaded(window) {
           setter.call(element, value);
           element.dispatchEvent(new Event("input", { bubbles: true }));
         };
+        const setInputValue = (element, value) => {
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+          setter.call(element, value);
+          element.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        const toggleFindPanel = () => {
+          window.dispatchEvent(new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "f",
+            ctrlKey: true
+          }));
+        };
         const api = window.csvDesktop;
         if (!api) {
           throw new Error("csvDesktop preload API missing");
@@ -491,6 +504,40 @@ async function runSmokeTestWhenLoaded(window) {
           "shift selection not restored"
         );
         await pointerUpWindow(elementCenter(restoredCellB2));
+        toggleFindPanel();
+        await waitFor(() => document.querySelector(".find-side-panel"), "find side panel did not open");
+        const findPanel = document.querySelector(".find-side-panel");
+        const findInput = document.querySelector("input[aria-label='查找内容']");
+        const runFindButton = Array.from(document.querySelectorAll(".find-side-panel button")).find(
+          (button) => button.textContent?.trim() === "查找"
+        );
+        if (!findPanel || !findInput || !runFindButton) {
+          throw new Error("find side panel controls missing");
+        }
+        setInputValue(findInput, "3");
+        clickElement(runFindButton);
+        await waitFor(
+          () =>
+            document.querySelector(".find-results-summary")?.textContent?.includes("1 项") &&
+            document.querySelector(".find-results-summary")?.textContent?.includes("选区 A1:B2") &&
+            Array.from(document.querySelectorAll(".find-result")).some((button) => button.textContent?.includes("A2")),
+          "find side panel did not show selected-range result"
+        );
+        const findPanelRect = findPanel.getBoundingClientRect();
+        const gridViewportRect = document.querySelector(".grid-viewport")?.getBoundingClientRect();
+        const resultA2 = Array.from(document.querySelectorAll(".find-result")).find((button) => button.textContent?.includes("A2"));
+        if (!gridViewportRect || !resultA2 || findPanelRect.left <= gridViewportRect.left) {
+          throw new Error("find side panel layout invalid");
+        }
+        clickElement(resultA2);
+        await waitFor(
+          () => document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "A2",
+          "find result click did not jump to cell"
+        );
+        const findResultJumped = document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "A2";
+        const findSummaryText = document.querySelector(".find-results-summary")?.textContent ?? "";
+        toggleFindPanel();
+        await waitFor(() => !document.querySelector(".find-side-panel"), "find side panel did not close");
         const columnHeaderB = document.querySelector("[role='columnheader'][aria-label='Column B']");
         const columnHeaderD = document.querySelector("[role='columnheader'][aria-label='Column D']");
         if (!columnHeaderB || !columnHeaderD) {
@@ -602,6 +649,11 @@ async function runSmokeTestWhenLoaded(window) {
             column: columnHeaderDragStatus,
             row: rowHeaderDragStatus
           },
+          search: {
+            summary: findSummaryText,
+            resultJumped: findResultJumped,
+            panelClosed: !document.querySelector(".find-side-panel")
+          },
           savedVersion: saved.version
         };
       })();
@@ -676,6 +728,14 @@ async function runSmokeTestWhenLoaded(window) {
     }
     if (!result.headerDrag?.column.includes("选区 2 x 3") || !result.headerDrag?.row.includes("选区 2 x 2")) {
       throw new Error("桌面行列头拖选烟测不正确。");
+    }
+    if (
+      !result.search?.summary.includes("1 项") ||
+      !result.search.summary.includes("选区 A1:B2") ||
+      !result.search.resultJumped ||
+      !result.search.panelClosed
+    ) {
+      throw new Error(`桌面查找侧栏烟测不正确: ${JSON.stringify(result.search)}`);
     }
     if (resultPath) {
       fsSync.writeFileSync(resultPath, JSON.stringify(result, null, 2), "utf8");
