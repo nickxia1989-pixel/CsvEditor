@@ -442,12 +442,12 @@ button:disabled {
 
 .tab-strip {
   display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   padding: 5px 7px 0;
   gap: 4px;
-  scrollbar-width: thin;
   -webkit-app-region: no-drag;
 }
 
@@ -464,7 +464,8 @@ button:disabled {
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  min-width: max-content;
+  min-width: 72px;
+  max-width: min(260px, 100%);
   height: 30px;
   padding: 0 6px 0 9px;
   border: 1px solid transparent;
@@ -483,8 +484,9 @@ button:disabled {
 }
 
 .tab-name {
-  flex: 0 0 auto;
-  overflow: visible;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

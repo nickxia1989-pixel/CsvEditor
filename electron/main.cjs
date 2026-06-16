@@ -331,14 +331,19 @@ async function runSmokeTestWhenLoaded(window) {
             clientY: rect.top + rect.height / 2
           };
         };
-        const pointerUpWindow = (options = {}) => {
+        const pointerUpWindow = async (options = {}) => {
           const EventClass = window.PointerEvent || window.MouseEvent;
-          window.dispatchEvent(new EventClass("pointerup", {
-            bubbles: true,
-            cancelable: true,
-            pointerId: 1,
-            ...options
-          }));
+          const dispatch = () => {
+            window.dispatchEvent(new EventClass("pointerup", {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              ...options
+            }));
+          };
+          dispatch();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          dispatch();
         };
         const setTextAreaValue = (element, value) => {
           const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
@@ -416,11 +421,21 @@ async function runSmokeTestWhenLoaded(window) {
         const cellA1 = document.querySelector(".grid-cell[aria-label='A1']");
         const cellB2 = document.querySelector(".grid-cell[aria-label='B2']");
         pointerDownElement(cellA1, elementCenter(cellA1));
-        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"), "single selection not reflected");
-        pointerUpWindow(elementCenter(cellA1));
+        await waitFor(
+          () =>
+            document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "A1" &&
+            document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"),
+          "single selection not reflected"
+        );
+        await pointerUpWindow(elementCenter(cellA1));
         pointerDownElement(cellB2, { ...elementCenter(cellB2), shiftKey: true });
-        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "shift selection not reflected");
-        pointerUpWindow(elementCenter(cellB2));
+        await waitFor(
+          () =>
+            document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "B2" &&
+            document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"),
+          "shift selection not reflected"
+        );
+        await pointerUpWindow(elementCenter(cellB2));
         const filterButton = document.querySelector("button[aria-label='筛选 B 列']");
         if (!filterButton) {
           throw new Error("column filter button missing");
@@ -454,15 +469,28 @@ async function runSmokeTestWhenLoaded(window) {
           throw new Error("clear filter button missing or disabled");
         }
         clickElement(clearFilterButton);
-        await waitFor(() => document.querySelector(".grid-cell[aria-label='A2']"), "filter did not restore data row");
+        await waitFor(
+          () => document.querySelector(".grid-cell[aria-label='A2']") && !document.querySelector(".column-filter-popover"),
+          "filter did not restore data row"
+        );
         const restoredCellA1 = document.querySelector(".grid-cell[aria-label='A1']");
         const restoredCellB2 = document.querySelector(".grid-cell[aria-label='B2']");
         pointerDownElement(restoredCellA1, elementCenter(restoredCellA1));
-        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"), "single selection not restored");
-        pointerUpWindow(elementCenter(restoredCellA1));
+        await waitFor(
+          () =>
+            document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "A1" &&
+            document.querySelector(".grid-status")?.textContent?.includes("选区 1 x 1"),
+          "single selection not restored"
+        );
+        await pointerUpWindow(elementCenter(restoredCellA1));
         pointerDownElement(restoredCellB2, { ...elementCenter(restoredCellB2), shiftKey: true });
-        await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "shift selection not restored");
-        pointerUpWindow(elementCenter(restoredCellB2));
+        await waitFor(
+          () =>
+            document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "B2" &&
+            document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"),
+          "shift selection not restored"
+        );
+        await pointerUpWindow(elementCenter(restoredCellB2));
         const columnHeaderB = document.querySelector("[role='columnheader'][aria-label='Column B']");
         const columnHeaderD = document.querySelector("[role='columnheader'][aria-label='Column D']");
         if (!columnHeaderB || !columnHeaderD) {
@@ -473,7 +501,7 @@ async function runSmokeTestWhenLoaded(window) {
         pointerEnterElement(columnHeaderD, elementCenter(columnHeaderD));
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 3"), "column header drag selection not reflected");
         const columnHeaderDragStatus = document.querySelector(".grid-status")?.textContent ?? "";
-        pointerUpWindow();
+        await pointerUpWindow();
         const rowHeader1 = document.querySelector("[role='rowheader'][aria-label='Row 1']");
         const rowHeader2 = document.querySelector("[role='rowheader'][aria-label='Row 2']");
         if (!rowHeader1 || !rowHeader2) {
@@ -484,7 +512,7 @@ async function runSmokeTestWhenLoaded(window) {
         pointerEnterElement(rowHeader2, elementCenter(rowHeader2));
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "row header drag selection not reflected");
         const rowHeaderDragStatus = document.querySelector(".grid-status")?.textContent ?? "";
-        pointerUpWindow();
+        await pointerUpWindow();
         setTextAreaValue(detailEditor, "多行\\n详情\\n编辑");
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("未保存 1"), "detail textarea edit not reflected");
         const gridStatusText = document.querySelector(".grid-status")?.textContent ?? "";
@@ -554,6 +582,8 @@ async function runSmokeTestWhenLoaded(window) {
             tabCount: document.querySelectorAll("[role='tab']").length,
             tabStripClientWidth: tabStrip ? Math.round(tabStrip.clientWidth) : 0,
             tabStripScrollWidth: tabStrip ? Math.round(tabStrip.scrollWidth) : 0,
+            tabStripClientHeight: tabStrip ? Math.round(tabStrip.clientHeight) : 0,
+            tabStripScrollHeight: tabStrip ? Math.round(tabStrip.scrollHeight) : 0,
             tabStripWheelLeftAfter,
             tabStripScrollLeftAfter: tabStrip ? Math.round(tabStrip.scrollLeft) : 0,
             tabFlexShrink: firstTabStyle?.flexShrink ?? "",
@@ -620,15 +650,17 @@ async function runSmokeTestWhenLoaded(window) {
     if (
       result.layout.hasTopbarActions ||
       result.layout.tabCount < 8 ||
-      result.layout.tabStripScrollWidth <= result.layout.tabStripClientWidth ||
-      result.layout.tabStripWheelLeftAfter <= 0 ||
-      result.layout.tabStripScrollLeftAfter <= 0 ||
+      result.layout.tabStripScrollWidth > result.layout.tabStripClientWidth ||
+      result.layout.tabStripScrollHeight < 60 ||
+      result.layout.tabStripClientHeight < result.layout.tabStripScrollHeight ||
+      result.layout.tabStripWheelLeftAfter !== 0 ||
+      result.layout.tabStripScrollLeftAfter !== 0 ||
       result.layout.tabFlexShrink !== "0" ||
-      result.layout.tabMaxWidth !== "none" ||
-      result.layout.tabNameOverflow !== "visible" ||
-      result.layout.tabNameTextOverflow !== "clip"
+      result.layout.tabMaxWidth === "none" ||
+      result.layout.tabNameOverflow !== "hidden" ||
+      result.layout.tabNameTextOverflow !== "ellipsis"
     ) {
-      throw new Error("桌面多页签滚动布局烟测不正确。");
+      throw new Error("桌面多页签换行布局烟测不正确。");
     }
     if (
       !result.layout.workspaceStatusRemoved ||

@@ -53,7 +53,7 @@ function setHorizontalOverflow(element: HTMLElement, scrollWidth: number, client
 }
 
 describe("TabStrip", () => {
-  it("scrolls horizontally with the mouse wheel when tabs overflow", () => {
+  it("does not hide overflowing tabs behind mouse-wheel horizontal scrolling", () => {
     render(
       <TabStrip
         tabs={Array.from({ length: 12 }, (_, index) => createTab(index))}
@@ -69,7 +69,8 @@ describe("TabStrip", () => {
 
     fireEvent.wheel(tabStrip, { deltaY: 180, deltaX: 0 });
 
-    expect(tabStrip.scrollLeft).toBe(220);
+    expect(tabStrip.scrollLeft).toBe(40);
+    expect(screen.getAllByRole("tab")).toHaveLength(12);
   });
 
   it("does not consume wheel input when tabs do not overflow", () => {
