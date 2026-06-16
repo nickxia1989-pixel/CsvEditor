@@ -16,6 +16,14 @@ describe("text decoding", () => {
     expect(result.replacementCount).toBe(0);
   });
 
+  it("encodes UTF-8 text to bytes instead of delegating string writes", () => {
+    const encoded = encodeTextBuffer("\uFEFFID,测试\r\n", "utf-8");
+
+    expect(ArrayBuffer.isView(encoded)).toBe(true);
+    expect([...encoded.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(encoded)).toBe("\uFEFFID,测试\r\n");
+  });
+
   it("encodes GB18030 text back to bytes for safe legacy CSV saves", () => {
     const encoded = encodeTextBuffer("ID,中文\r\n", "gb18030");
 

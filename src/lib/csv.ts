@@ -71,17 +71,19 @@ export function unparseCsvData(
 ): string {
   const separator = newline || "\n";
   const normalizedDelimiter = delimiter || ",";
+  const targetWidth = maxColumnCount(data);
   const text = data
     .map((row, index) => {
       const sourceRow = sourceRows[index];
       if (sourceRow && rowsEqual(row, sourceRow.data)) {
         return sourceRow.raw;
       }
-      const preservedRow = sourceRow ? unparseCsvRowWithSource(row, normalizedDelimiter, sourceRow) : null;
+      const normalizedRow = normalizeRowWidth(row, targetWidth);
+      const preservedRow = sourceRow ? unparseCsvRowWithSource(normalizedRow, normalizedDelimiter, sourceRow) : null;
       if (preservedRow !== null) {
         return preservedRow;
       }
-      return Papa.unparse([row], {
+      return Papa.unparse([normalizedRow], {
         delimiter: normalizedDelimiter,
         newline: separator
       });
@@ -337,6 +339,13 @@ function serializeCsvField(value: string, delimiter: string): string {
     return value;
   }
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+function normalizeRowWidth(row: string[], width: number): string[] {
+  if (row.length >= width) {
+    return row;
+  }
+  return [...row, ...Array.from({ length: width - row.length }, () => "")];
 }
 
 function rowsEqual(left: string[], right: string[]): boolean {

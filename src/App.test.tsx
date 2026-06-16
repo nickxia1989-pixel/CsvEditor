@@ -1203,6 +1203,28 @@ describe("App local directory flow", () => {
     expect(file.getText()).toBe("A,B,\n1,,");
   });
 
+  it("pads trailing empty fields when saving data typed into a blank virtual row", async () => {
+    const file = new MockFileHandle("blank-row.csv", "A,B,C\r\n1,2,3\r\n");
+    const root = new MockDirectoryHandle("Tables", [["blank-row.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "blank-row.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A4" })).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A4" }));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "new" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(file.getText()).toBe("A,B,C\r\n1,2,3\r\n,,\r\nnew,,\r\n");
+  });
+
   it("prevents editing and clearing a locked selected cell", async () => {
     const file = new MockFileHandle("locked.csv", "ID,Name\n1,Alpha");
     const root = new MockDirectoryHandle("Tables", [["locked.csv", file]]);
@@ -1421,6 +1443,64 @@ describe("App local directory flow", () => {
 
     await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
     expect(file.getText()).toBe("ID,Name\n1,Forest Fox\n2,Forest Fox");
+  });
+
+  it("preserves UTF-8 BOM bytes when saving", async () => {
+    const file = new MockFileHandle("utf8-bom.csv", "\uFEFFID,Name\r\n1,Alpha\r\n");
+    const root = new MockDirectoryHandle("Tables", [["utf8-bom.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "utf8-bom.csv" }));
+    await waitFor(() => expect(screen.getByText((text) => text.includes("UTF-8"))).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A2" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("1"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect([...file.getBytes()]).toEqual([...new TextEncoder().encode("\uFEFFID,Name\r\n2,Alpha\r\n")]);
+    expect(file.getText()).toBe("ID,Name\r\n2,Alpha\r\n");
+    expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(file.getBytes())).toBe("\uFEFFID,Name\r\n2,Alpha\r\n");
+  });
+
+  it("preserves the original GB18030 encoding when saving", async () => {
+    const file = new MockFileHandle(
+      "gb18030-save.csv",
+      new Uint8Array([
+        0x49, 0x44, 0x2c, 0x4e, 0x61, 0x6d, 0x65, 0x0d, 0x0a,
+        0x31, 0x2c, 0xd6, 0xd0, 0xce, 0xc4, 0x0d, 0x0a
+      ])
+    );
+    const root = new MockDirectoryHandle("Tables", [["gb18030-save.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "gb18030-save.csv" }));
+    await waitFor(() => expect(screen.getByText((text) => text.includes("GB18030"))).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("gridcell", { name: "A2" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("1"));
+    fireEvent.change(screen.getByLabelText("Selected cell value"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect([...file.getBytes()]).toEqual([
+      0x49, 0x44, 0x2c, 0x4e, 0x61, 0x6d, 0x65, 0x0d, 0x0a,
+      0x32, 0x2c, 0xd6, 0xd0, 0xce, 0xc4, 0x0d, 0x0a
+    ]);
+    expect(file.getText("gb18030")).toBe("ID,Name\r\n2,中文\r\n");
   });
 
   it("replaces only the current selected-range find results", async () => {

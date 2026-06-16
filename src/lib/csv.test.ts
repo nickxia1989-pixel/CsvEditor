@@ -195,6 +195,36 @@ describe("csv helpers", () => {
     )).toBe('34,"keep,comma",测试lilifute ,added\r\n');
   });
 
+  it("pads changed ragged rows to the current table width", () => {
+    const original = "A,B,C\r\n1\r\n";
+    const parsed = parseCsvText(original);
+    const next = parsed.data.map((row) => [...row]);
+    next[1][0] = "2";
+
+    expect(unparseCsvData(
+      next,
+      parsed.delimiter,
+      parsed.newline,
+      parsed.hasBom,
+      parsed.sourceRows,
+      parsed.trailingNewline
+    )).toBe("A,B,C\r\n2,,\r\n");
+  });
+
+  it("pads virtual blank rows when saving sparse edits", () => {
+    const data = writeCell(
+      [
+        ["A", "B", "C"],
+        ["1", "2", "3"]
+      ],
+      3,
+      0,
+      "new"
+    );
+
+    expect(unparseCsvData(data, ",", "\n")).toBe("A,B,C\n1,2,3\n,,\nnew,,");
+  });
+
   it("strips BOM while parsing and restores it when serializing", () => {
     const parsed = parseCsvText("\uFEFFA,B\n1,2");
     expect(parsed.hasBom).toBe(true);

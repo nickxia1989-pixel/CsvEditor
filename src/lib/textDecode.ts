@@ -34,10 +34,10 @@ export function countReplacementCharacters(text: string): number {
   return text.match(/\uFFFD/g)?.length ?? 0;
 }
 
-export function encodeTextBuffer(text: string, encoding: string): string | Uint8Array {
+export function encodeTextBuffer(text: string, encoding: string): Uint8Array {
   const normalized = encoding.toLowerCase();
   if (normalized === "utf-8" || normalized === "utf8") {
-    return text;
+    return new TextEncoder().encode(text);
   }
   if (normalized === "gb18030") {
     return encodeGb18030(text);

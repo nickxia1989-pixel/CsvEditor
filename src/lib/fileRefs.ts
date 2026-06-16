@@ -1,7 +1,7 @@
 import { decodeTextBuffer } from "./textDecode";
 import type { CsvFavoriteFile } from "../types";
 
-export type CsvWritableData = string | Uint8Array;
+export type CsvWritableData = Uint8Array;
 
 export type CsvVersion = {
   lastModified: number;

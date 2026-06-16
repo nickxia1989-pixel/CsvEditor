@@ -79,7 +79,7 @@ describe("file refs and hot refresh model", () => {
     const before = await ref.read();
     expect(before.text).toBe("A,B\n1,2");
 
-    const savedVersion = await ref.write!("A,B\n3,4");
+    const savedVersion = await ref.write!(new TextEncoder().encode("A,B\n3,4"));
     const after = await ref.read();
     expect(after.text).toBe("A,B\n3,4");
     expect(versionEquals(savedVersion, after.version)).toBe(true);
@@ -260,8 +260,9 @@ describe("file refs and hot refresh model", () => {
     expect(opened.text).toBe("\uFEFFA,B\r\n1,2\r\n");
     expect(opened.encoding).toBe("utf-8");
 
-    const savedVersion = await ref.write!("A,B\r\n3,4\r\n");
-    expect(api.writeFile).toHaveBeenCalledWith("D:\\Tables\\desktop.csv", "A,B\r\n3,4\r\n");
+    const nextBytes = new TextEncoder().encode("A,B\r\n3,4\r\n");
+    const savedVersion = await ref.write!(nextBytes);
+    expect(api.writeFile).toHaveBeenCalledWith("D:\\Tables\\desktop.csv", nextBytes);
     expect(savedVersion).toEqual(await ref.getVersion!());
     await expect(ref.read()).resolves.toMatchObject({ text: "A,B\r\n3,4\r\n" });
   });
