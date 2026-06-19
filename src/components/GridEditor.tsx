@@ -472,19 +472,43 @@ export function GridEditor({
     const selectedRight = rowHeaderWidth + colOffsets[tab.selection.focusCol + 1];
     const selectedTop = headerHeight + selectedDisplayIndex * rowHeight;
     const selectedBottom = selectedTop + rowHeight;
+    const freezeRowCount = clamp(tab.freezeRows, 0, displayRowCount);
+    const freezeColCount = clamp(tab.freezeCols, 0, maxCols);
+    const frozenWidth = colOffsets[freezeColCount] ?? 0;
+    const frozenHeight = freezeRowCount * rowHeight;
+    const selectedInFrozenRows = selectedDisplayIndex < freezeRowCount;
+    const selectedInFrozenCols = tab.selection.focusCol < freezeColCount;
+    const visibleLeftInset = rowHeaderWidth + (selectedInFrozenCols ? 0 : frozenWidth);
+    const visibleTopInset = headerHeight + (selectedInFrozenRows ? 0 : frozenHeight);
 
-    if (selectedLeft < viewportElement.scrollLeft + rowHeaderWidth) {
-      viewportElement.scrollLeft = Math.max(0, selectedLeft - rowHeaderWidth);
-    } else if (selectedRight > viewportElement.scrollLeft + viewportElement.clientWidth) {
-      viewportElement.scrollLeft = selectedRight - viewportElement.clientWidth;
+    if (!selectedInFrozenCols) {
+      if (selectedLeft < viewportElement.scrollLeft + visibleLeftInset) {
+        viewportElement.scrollLeft = Math.max(0, selectedLeft - visibleLeftInset);
+      } else if (selectedRight > viewportElement.scrollLeft + viewportElement.clientWidth) {
+        viewportElement.scrollLeft = selectedRight - viewportElement.clientWidth;
+      }
     }
 
-    if (selectedTop < viewportElement.scrollTop + headerHeight) {
-      viewportElement.scrollTop = Math.max(0, selectedTop - headerHeight);
-    } else if (selectedBottom > viewportElement.scrollTop + viewportElement.clientHeight) {
-      viewportElement.scrollTop = selectedBottom - viewportElement.clientHeight;
+    if (!selectedInFrozenRows) {
+      if (selectedTop < viewportElement.scrollTop + visibleTopInset) {
+        viewportElement.scrollTop = Math.max(0, selectedTop - visibleTopInset);
+      } else if (selectedBottom > viewportElement.scrollTop + viewportElement.clientHeight) {
+        viewportElement.scrollTop = selectedBottom - viewportElement.clientHeight;
+      }
     }
-  }, [colOffsets, headerHeight, rowDisplayIndexMap, rowHeaderWidth, rowHeight, tab.selection.focusCol, tab.selection.focusRow]);
+  }, [
+    colOffsets,
+    displayRowCount,
+    headerHeight,
+    maxCols,
+    rowDisplayIndexMap,
+    rowHeaderWidth,
+    rowHeight,
+    tab.freezeCols,
+    tab.freezeRows,
+    tab.selection.focusCol,
+    tab.selection.focusRow
+  ]);
 
   const visibleRows = useMemo(() => {
     const start = clamp(Math.floor((viewport.scrollTop - headerHeight) / rowHeight) - OVERSCAN, 0, displayRowCount - 1);

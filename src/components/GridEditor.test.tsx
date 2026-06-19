@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GridEditor } from "./GridEditor";
-import type { CsvTab } from "../types";
+import type { CsvFindSnapshot, CsvTab } from "../types";
 import { singleCellSelection } from "../types";
 
 function createTab(overrides: Partial<CsvTab> = {}): CsvTab {
@@ -443,6 +443,43 @@ describe("GridEditor toolbar", () => {
     fireEvent.click(screen.getByRole("button", { name: "跳转到 B2" }));
 
     expect(props.onSelectionChange).toHaveBeenLastCalledWith(singleCellSelection(1, 1));
+  });
+
+  it("scrolls find result jumps clear of frozen panes", async () => {
+    const data = Array.from({ length: 24 }, (_, row) =>
+      Array.from({ length: 6 }, (_, col) => `${row + 1}-${col + 1}`)
+    );
+    data[2][1] = "needle";
+    const findSnapshot: CsvFindSnapshot = {
+      query: "needle",
+      scope: { mode: "table", startRow: 0, endRow: 23, startCol: 0, endCol: 5, visibleOnly: false },
+      results: [{ row: 2, col: 1, value: "needle", locked: false }]
+    };
+    const tab = createTab({
+      data,
+      findQuery: "needle",
+      findSnapshot,
+      freezeRows: 2,
+      freezeCols: 1,
+      selection: singleCellSelection(12, 4)
+    });
+    const { props, rerender } = renderGridWithResult(tab);
+    const grid = screen.getByRole("grid", { name: "CSV grid" }) as HTMLElement;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 160 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 260 });
+    grid.scrollTop = 40;
+    grid.scrollLeft = 80;
+
+    openFindPanel();
+    fireEvent.click(screen.getByRole("button", { name: "跳转到 B3" }));
+    const jumpedSelection = props.onSelectionChange.mock.calls.at(-1)?.[0];
+    expect(jumpedSelection).toEqual(singleCellSelection(2, 1));
+    rerender(<GridEditor {...props} tab={createTab({ ...tab, selection: jumpedSelection })} />);
+
+    await waitFor(() => {
+      expect(grid.scrollTop).toBe(0);
+      expect(grid.scrollLeft).toBe(0);
+    });
   });
 
   it("keeps confirmed results stable while the find input changes", () => {
