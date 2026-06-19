@@ -30,6 +30,7 @@ type DirectoryPaneProps = {
   canReloadActive: boolean;
   canSaveActive: boolean;
   canSaveAll: boolean;
+  canGlobalSearch: boolean;
   onFilterChange(value: string): void;
   onPickDirectory(): void;
   onSvnCommit(): void;
@@ -37,6 +38,7 @@ type DirectoryPaneProps = {
   onReloadActive(): void;
   onSaveActive(): void;
   onSaveAll(): void;
+  onOpenGlobalSearch(): void;
   onToggleDirectory(node: TreeNode): void;
   onOpenFile(node: TreeNode): void;
   onFileContextMenu?(node: TreeNode, point: { x: number; y: number }): void;
@@ -55,6 +57,7 @@ export function DirectoryPane({
   canReloadActive,
   canSaveActive,
   canSaveAll,
+  canGlobalSearch,
   onFilterChange,
   onPickDirectory,
   onSvnCommit,
@@ -62,6 +65,7 @@ export function DirectoryPane({
   onReloadActive,
   onSaveActive,
   onSaveAll,
+  onOpenGlobalSearch,
   onToggleDirectory,
   onOpenFile,
   onFileContextMenu,
@@ -178,6 +182,16 @@ export function DirectoryPane({
         >
           <SaveAll size={15} />
           <span>全部保存</span>
+        </button>
+        <button
+          className="file-action-button"
+          onClick={onOpenGlobalSearch}
+          disabled={!canGlobalSearch}
+          title={canGlobalSearch ? "搜索当前目录下所有 CSV" : "请先选择目录"}
+          aria-label="全表搜索"
+        >
+          <Search size={15} />
+          <span>全表搜索</span>
         </button>
       </div>
 

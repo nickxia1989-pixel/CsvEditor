@@ -825,6 +825,162 @@ async function runSmokeTestWhenLoaded(window) {
         const findSummaryText = document.querySelector(".find-results-summary")?.textContent ?? "";
         toggleFindPanel();
         await waitFor(() => !document.querySelector(".find-side-panel"), "find side panel did not close");
+        const globalSearchButton = findButton("全表搜索");
+        if (!globalSearchButton || globalSearchButton.disabled) {
+          throw new Error("global search button missing or disabled");
+        }
+        clickElement(globalSearchButton);
+        await waitFor(() => document.querySelector(".global-search-panel"), "global search panel did not open");
+        const globalSearchInput = document.querySelector("input[aria-label='全表搜索内容']");
+        if (!globalSearchInput) {
+          throw new Error("global search input missing");
+        }
+        setInputValue(globalSearchInput, "GLOBAL_NEEDLE");
+        const globalSearchRunButton = Array.from(document.querySelectorAll(".global-search-panel button")).find(
+          (button) => button.textContent?.trim() === "搜索"
+        );
+        if (!globalSearchRunButton || globalSearchRunButton.disabled) {
+          throw new Error("global search run button missing or disabled");
+        }
+        clickElement(globalSearchRunButton);
+        await waitFor(
+          () =>
+            Array.from(document.querySelectorAll(".global-search-result")).some(
+              (button) =>
+                button.textContent?.includes("GLOBAL_NEEDLE") &&
+                button.textContent?.includes("表格") &&
+                button.textContent?.includes("smoke-global.csv") &&
+                button.textContent?.includes("ID") &&
+                button.textContent?.includes("字段") &&
+                button.textContent?.includes("name") &&
+                !button.textContent?.includes("nested/smoke-global.csv")
+            ),
+          "global search result missing"
+        );
+        const globalSearchResult = Array.from(document.querySelectorAll(".global-search-result")).find(
+          (button) =>
+            button.textContent?.includes("GLOBAL_NEEDLE") &&
+            button.textContent?.includes("表格") &&
+            button.textContent?.includes("smoke-global.csv") &&
+            button.textContent?.includes("ID") &&
+            button.textContent?.includes("1") &&
+            button.textContent?.includes("字段") &&
+            button.textContent?.includes("name") &&
+            !button.textContent?.includes("nested/smoke-global.csv") &&
+            !button.textContent?.includes("B3")
+        );
+        const globalSearchResultsList = document.querySelector(".global-search-results");
+        if (!globalSearchResultsList) {
+          throw new Error("global search results list missing");
+        }
+        globalSearchResultsList.scrollTop = 120;
+        globalSearchResultsList.dispatchEvent(new Event("scroll", { bubbles: true }));
+        await waitFor(
+          () => {
+            const globalSearchHistory = JSON.parse(localStorage.getItem("csv-workspace-editor:global-search-history:v1") ?? "[]");
+            return (
+              globalSearchHistory.some(
+                (entry) =>
+                  entry.query === "GLOBAL_NEEDLE" &&
+                  entry.results?.some?.(
+                    (result) =>
+                      result.fileName === "smoke-global.csv" &&
+                      result.cell === "B3" &&
+                      result.primaryKey === "1" &&
+                      result.fieldName === "name"
+                  )
+              ) &&
+              Array.from(document.querySelectorAll(".global-search-history-item")).some((button) =>
+                button.textContent?.includes("GLOBAL_NEEDLE")
+              )
+            );
+          },
+          "global search history did not persist"
+        );
+        const globalSearchHistory = JSON.parse(localStorage.getItem("csv-workspace-editor:global-search-history:v1") ?? "[]");
+        const globalSearchHistorySaved = globalSearchHistory.some(
+          (entry) =>
+            entry.query === "GLOBAL_NEEDLE" &&
+            entry.results?.some?.(
+              (result) =>
+                result.fileName === "smoke-global.csv" &&
+                result.cell === "B3" &&
+                result.primaryKey === "1" &&
+                result.fieldName === "name"
+            )
+        );
+        const globalSearchHistoryVisible = Array.from(document.querySelectorAll(".global-search-history-item")).some((button) =>
+          button.textContent?.includes("GLOBAL_NEEDLE")
+        );
+        if (!globalSearchResult) {
+          throw new Error("global search result target missing");
+        }
+        const globalSearchPreview = globalSearchResult.querySelector(".global-search-result-preview");
+        const globalSearchKeyline = globalSearchResult.querySelector(".global-search-result-keyline");
+        if (!globalSearchPreview || !globalSearchKeyline) {
+          throw new Error("global search result layout elements missing");
+        }
+        const globalSearchResultRect = globalSearchResult.getBoundingClientRect();
+        const globalSearchPreviewRect = globalSearchPreview.getBoundingClientRect();
+        const globalSearchKeylineRect = globalSearchKeyline.getBoundingClientRect();
+        const globalSearchPreviewStyle = getComputedStyle(globalSearchPreview);
+        const globalSearchResultVisual = {
+          resultHeight: Math.round(globalSearchResultRect.height),
+          previewLineClamp: globalSearchPreviewStyle.webkitLineClamp,
+          previewOverflow: globalSearchPreviewStyle.overflow,
+          keylineBelowPreview: globalSearchKeylineRect.top >= globalSearchPreviewRect.top,
+          contextHidden: !globalSearchResult.querySelector(".global-search-result-context"),
+          fileMetaHidden: !globalSearchResult.querySelector(".global-search-result-main"),
+          cellHidden: !globalSearchResult.querySelector(".global-search-result-cell"),
+          tableNameVisible: globalSearchResult.textContent?.includes("smoke-global.csv") ?? false,
+          pathHidden: !(globalSearchResult.textContent?.includes("nested/smoke-global.csv") ?? false)
+        };
+        clickElement(globalSearchResult);
+        await waitFor(
+          () =>
+            !document.querySelector(".global-search-panel") &&
+            Array.from(document.querySelectorAll("[role='tab']")).some((tab) => tab.textContent?.includes("smoke-global.csv")) &&
+            document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "B3",
+          "global search result did not open and jump"
+        );
+        const globalSearchJumped = document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "B3";
+        const globalSearchPanelClosed = !document.querySelector(".global-search-panel");
+        clickElement(globalSearchButton);
+        await waitFor(() => document.querySelector(".global-search-panel"), "global search panel did not reopen");
+        const reopenedGlobalSearchResultsList = document.querySelector(".global-search-results");
+        await waitFor(
+          () =>
+            document.querySelector(".global-search-result.active")?.textContent?.includes("GLOBAL_NEEDLE") &&
+            Math.round(reopenedGlobalSearchResultsList?.scrollTop ?? 0) === 120,
+          "global search state did not restore"
+        );
+        const globalSearchStateRestored =
+          Boolean(document.querySelector(".global-search-result.active")?.textContent?.includes("GLOBAL_NEEDLE")) &&
+          Math.round(reopenedGlobalSearchResultsList?.scrollTop ?? 0) === 120;
+        const deleteGlobalSearchHistoryButton = document.querySelector(".global-search-history-delete");
+        if (!deleteGlobalSearchHistoryButton) {
+          throw new Error("global search history delete button missing");
+        }
+        clickElement(deleteGlobalSearchHistoryButton);
+        await waitFor(
+          () => {
+            const nextGlobalSearchHistory = JSON.parse(localStorage.getItem("csv-workspace-editor:global-search-history:v1") ?? "[]");
+            const historyStillSaved = nextGlobalSearchHistory.some((entry) => entry.query === "GLOBAL_NEEDLE");
+            const historyStillVisible = Array.from(document.querySelectorAll(".global-search-history-item")).some((button) =>
+              button.textContent?.includes("GLOBAL_NEEDLE")
+            );
+            return !historyStillSaved && !historyStillVisible;
+          },
+          "global search history did not delete"
+        );
+        const deletedGlobalSearchHistory = JSON.parse(localStorage.getItem("csv-workspace-editor:global-search-history:v1") ?? "[]");
+        const globalSearchHistoryDeleted =
+          !deletedGlobalSearchHistory.some((entry) => entry.query === "GLOBAL_NEEDLE") &&
+          !Array.from(document.querySelectorAll(".global-search-history-item")).some((button) =>
+            button.textContent?.includes("GLOBAL_NEEDLE")
+          );
+        document.querySelector(".global-search-panel button[aria-label='关闭全表搜索']")?.click();
+        await waitFor(() => !document.querySelector(".global-search-panel"), "global search panel did not close after state restore check");
         openQuickFilePicker();
         await waitFor(() => document.querySelector(".quick-open-panel"), "quick file picker did not open");
         const quickOpenInput = document.querySelector("input[aria-label='快速打开文件']");
@@ -1211,6 +1367,15 @@ async function runSmokeTestWhenLoaded(window) {
             resultJumped: findResultJumped,
             panelClosed: !document.querySelector(".find-side-panel")
           },
+          globalSearch: {
+            historySaved: globalSearchHistorySaved,
+            historyVisible: globalSearchHistoryVisible,
+            resultJumped: globalSearchJumped,
+            panelClosed: globalSearchPanelClosed,
+            stateRestored: globalSearchStateRestored,
+            historyDeleted: globalSearchHistoryDeleted,
+            visual: globalSearchResultVisual
+          },
           filter: {
             searchStatus: filterSearchStatus,
             searchMatchedOnly: filterSearchMatchedOnly,
@@ -1247,6 +1412,7 @@ async function runSmokeTestWhenLoaded(window) {
       !buttonTexts.includes("刷新") ||
       !buttonTexts.includes("保存") ||
       !buttonTexts.includes("全部保存") ||
+      !buttonTexts.includes("全表搜索") ||
       !buttonTexts.includes("复制路径") ||
       !buttonTexts.includes("加入收藏")
     ) {
@@ -1316,6 +1482,25 @@ async function runSmokeTestWhenLoaded(window) {
       !result.search.panelClosed
     ) {
       throw new Error(`桌面查找侧栏烟测不正确: ${JSON.stringify(result.search)}`);
+    }
+    if (
+      !result.globalSearch?.historySaved ||
+      !result.globalSearch.historyVisible ||
+      !result.globalSearch.resultJumped ||
+      !result.globalSearch.panelClosed ||
+      !result.globalSearch.stateRestored ||
+      !result.globalSearch.historyDeleted ||
+      result.globalSearch.visual?.previewLineClamp !== "2" ||
+      result.globalSearch.visual?.previewOverflow !== "hidden" ||
+      !result.globalSearch.visual?.keylineBelowPreview ||
+      !result.globalSearch.visual?.contextHidden ||
+      !result.globalSearch.visual?.fileMetaHidden ||
+      !result.globalSearch.visual?.cellHidden ||
+      !result.globalSearch.visual?.tableNameVisible ||
+      !result.globalSearch.visual?.pathHidden ||
+      result.globalSearch.visual?.resultHeight > 118
+    ) {
+      throw new Error(`桌面全表搜索烟测不正确: ${JSON.stringify(result.globalSearch)}`);
     }
     if (!result.filter?.searchMatchedOnly || !result.filter.searchStatus.includes("筛选显示 2 行")) {
       throw new Error(`桌面搜索筛选烟测不正确: ${JSON.stringify(result.filter)}`);

@@ -22,6 +22,16 @@ async function main() {
   const resultPath = path.join(tempRoot, "result.json");
   const csvPath = path.join(tempRoot, "smoke.csv");
   fs.writeFileSync(csvPath, Buffer.from("\uFEFFA,B\r\n1,2\r\n", "utf8"));
+  const globalSearchDir = path.join(tempRoot, "nested");
+  fs.mkdirSync(globalSearchDir, { recursive: true });
+  const globalRows = Array.from({ length: 42 }, (_value, index) => {
+    const label = `GLOBAL_NEEDLE_${String(index + 1).padStart(2, "0")}`;
+    if (index === 0) {
+      return `${index + 1},当Trigger填为16；${label}；90时，则只有当TriggerSourceSkillID这个技能释放时，才有90%概率触发${label}这个技能。这里故意写成长文本用于检查全表搜索结果不会把排版撑乱。`;
+    }
+    return `${index + 1},${label}`;
+  });
+  fs.writeFileSync(path.join(globalSearchDir, "smoke-global.csv"), `说明,说明\r\nid,name\r\n${globalRows.join("\r\n")}\r\n`, "utf8");
   for (let index = 0; index < 12; index += 1) {
     const padded = String(index).padStart(2, "0");
     fs.writeFileSync(path.join(tempRoot, `smoke-tab-${padded}.csv`), `A,B\r\n${index},${index + 1}\r\n`, "utf8");
@@ -89,6 +99,7 @@ async function main() {
         filter: result.filter,
         visual: result.visual,
         search: result.search,
+        globalSearch: result.globalSearch,
         quickOpen: result.quickOpen,
         split: result.split,
         windowControls: result.windowControls,

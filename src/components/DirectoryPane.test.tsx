@@ -36,6 +36,7 @@ function renderDirectory(root = createLargeRoot(200), overrides: Partial<Compone
     canReloadActive: true,
     canSaveActive: true,
     canSaveAll: true,
+    canGlobalSearch: true,
     onFilterChange: vi.fn(),
     onPickDirectory: vi.fn(),
     onSvnCommit: vi.fn(),
@@ -43,6 +44,7 @@ function renderDirectory(root = createLargeRoot(200), overrides: Partial<Compone
     onReloadActive: vi.fn(),
     onSaveActive: vi.fn(),
     onSaveAll: vi.fn(),
+    onOpenGlobalSearch: vi.fn(),
     onToggleDirectory: vi.fn(),
     onOpenFile: vi.fn(),
     onOpenFavorite: vi.fn(),
@@ -111,10 +113,12 @@ describe("DirectoryPane", () => {
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     fireEvent.click(screen.getByRole("button", { name: "全部保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "全表搜索" }));
 
     expect(props.onReloadActive).toHaveBeenCalledTimes(1);
     expect(props.onSaveActive).toHaveBeenCalledTimes(1);
     expect(props.onSaveAll).toHaveBeenCalledTimes(1);
+    expect(props.onOpenGlobalSearch).toHaveBeenCalledTimes(1);
   });
 
   it("opens a file context menu target from a right click", () => {
@@ -190,11 +194,13 @@ describe("DirectoryPane", () => {
     renderDirectory(createLargeRoot(3), {
       canReloadActive: false,
       canSaveActive: false,
-      canSaveAll: false
+      canSaveAll: false,
+      canGlobalSearch: false
     });
 
     expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "全部保存" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "全表搜索" })).toBeDisabled();
   });
 });

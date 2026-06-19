@@ -20,6 +20,7 @@ import {
   X
 } from "lucide-react";
 import { DirectoryPane } from "./components/DirectoryPane";
+import { GlobalSearchOverlay } from "./components/GlobalSearchOverlay";
 import { COMMIT_ACTIVE_EDIT_EVENT, GridEditor } from "./components/GridEditor";
 import { QuickOpenOverlay } from "./components/QuickOpenOverlay";
 import { TabStrip, type TabDropPlacement } from "./components/TabStrip";
@@ -72,6 +73,13 @@ import {
   shiftLockedCellsForInsertedColumns,
   shiftLockedCellsForInsertedRows
 } from "./lib/gridOps";
+import {
+  addGlobalSearchHistory,
+  GLOBAL_SEARCH_HISTORY_STORAGE_KEY,
+  sanitizeGlobalSearchHistory,
+  searchCsvFiles,
+  type SearchableCsvFile
+} from "./lib/globalSearch";
 import { clearHistory, pushUndo, redoTab, undoTab } from "./lib/history";
 import { buildQuickOpenCandidates, type QuickOpenCandidate } from "./lib/quickOpen";
 import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion, reloadTabFromFileRef } from "./lib/tabModel";
@@ -100,6 +108,9 @@ import type {
   CsvColumnFilters,
   CsvFavoriteFile,
   CsvFindSnapshot,
+  GlobalSearchProgress,
+  GlobalSearchResult,
+  GlobalSearchSnapshot,
   CsvWorkspaceFile,
   CsvWorkspaceState,
   CsvTab,
@@ -139,6 +150,9 @@ type SaveOptions = {
 type OpenFileOptions = {
   activate?: boolean;
   quiet?: boolean;
+  targetCell?: FindResultCell;
+  status?: string;
+  clearFilters?: boolean;
 };
 type QuickOpenState = {
   query: string;
@@ -171,6 +185,18 @@ export function App() {
   const [desktopWindowState, setDesktopWindowState] = useState<DesktopWindowState>(DEFAULT_DESKTOP_WINDOW_STATE);
   const [tabSwitcher, setTabSwitcher] = useState<TabSwitcherSession | null>(null);
   const [quickOpen, setQuickOpen] = useState<QuickOpenState | null>(null);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [globalSearchSnapshot, setGlobalSearchSnapshot] = useState<GlobalSearchSnapshot | null>(null);
+  const [globalSearchHistory, setGlobalSearchHistory] = useState<GlobalSearchSnapshot[]>(() => loadStoredGlobalSearchHistory());
+  const [selectedGlobalSearchHistoryId, setSelectedGlobalSearchHistoryId] = useState<string | null>(null);
+  const [selectedGlobalSearchResultId, setSelectedGlobalSearchResultId] = useState<string | null>(null);
+  const [globalSearchSearching, setGlobalSearchSearching] = useState(false);
+  const [globalSearchProgress, setGlobalSearchProgress] = useState<GlobalSearchProgress>({
+    phase: "idle",
+    scannedFiles: 0,
+    totalFiles: 0
+  });
   const [pathContextMenu, setPathContextMenu] = useState<PathContextMenuState>(null);
   const [workspaceStateLoaded, setWorkspaceStateLoaded] = useState(false);
   const rootRef = useRef(root);
@@ -183,6 +209,9 @@ export function App() {
   const tabSwitcherRef = useRef<TabSwitcherSession | null>(null);
   const quickOpenLoadSerialRef = useRef(0);
   const quickOpenCandidatesRef = useRef<QuickOpenCandidate[]>([]);
+  const globalSearchSerialRef = useRef(0);
+  const globalSearchHistoryRef = useRef(globalSearchHistory);
+  const globalSearchResultScrollTopsRef = useRef<Record<string, number>>({});
   const restoringWorkspaceRef = useRef(false);
   const workspacePersistSnapshotRef = useRef("");
   const favoritePersistSnapshotRef = useRef("");
@@ -286,6 +315,10 @@ export function App() {
   useEffect(() => {
     quickOpenCandidatesRef.current = quickOpenCandidates;
   }, [quickOpenCandidates]);
+
+  useEffect(() => {
+    globalSearchHistoryRef.current = globalSearchHistory;
+  }, [globalSearchHistory]);
 
   useEffect(() => {
     if (!quickOpen) {
@@ -576,6 +609,171 @@ export function App() {
     });
   }, []);
 
+  const persistGlobalSearchHistory = useCallback(
+    (history: GlobalSearchSnapshot[]) => {
+      globalSearchHistoryRef.current = history;
+      setGlobalSearchHistory(history);
+      if (typeof window === "undefined") {
+        return;
+      }
+      try {
+        window.localStorage.setItem(GLOBAL_SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(history));
+      } catch (error) {
+        notify("warning", `全表搜索历史保存失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    [notify]
+  );
+
+  const openGlobalSearch = useCallback(() => {
+    replaceTabSwitcher(null);
+    closeQuickOpen();
+    setPathContextMenu(null);
+    setGlobalSearchOpen(true);
+  }, [closeQuickOpen, replaceTabSwitcher]);
+
+  const closeGlobalSearch = useCallback(() => {
+    globalSearchSerialRef.current += 1;
+    setGlobalSearchSearching(false);
+    setGlobalSearchProgress({ phase: "idle", scannedFiles: 0, totalFiles: 0 });
+    setGlobalSearchOpen(false);
+  }, []);
+
+  const selectGlobalSearchHistory = useCallback((id: string) => {
+    const snapshot = globalSearchHistoryRef.current.find((entry) => entry.id === id);
+    if (!snapshot) {
+      return;
+    }
+    setGlobalSearchQuery(snapshot.query);
+    setGlobalSearchSnapshot(snapshot);
+    setSelectedGlobalSearchHistoryId(snapshot.id);
+    setGlobalSearchProgress({ phase: "idle", scannedFiles: 0, totalFiles: 0 });
+    setGlobalSearchOpen(true);
+  }, []);
+
+  const deleteGlobalSearchHistory = useCallback(
+    (id: string) => {
+      const currentHistory = globalSearchHistoryRef.current;
+      const deletedIndex = currentHistory.findIndex((entry) => entry.id === id);
+      if (deletedIndex < 0) {
+        return;
+      }
+
+      const nextHistory = currentHistory.filter((entry) => entry.id !== id);
+      const nextScrollTops = { ...globalSearchResultScrollTopsRef.current };
+      delete nextScrollTops[id];
+      globalSearchResultScrollTopsRef.current = nextScrollTops;
+      persistGlobalSearchHistory(nextHistory);
+
+      if (selectedGlobalSearchHistoryId !== id && globalSearchSnapshot?.id !== id) {
+        return;
+      }
+
+      const fallbackSnapshot = nextHistory[Math.min(deletedIndex, nextHistory.length - 1)] ?? null;
+      setSelectedGlobalSearchResultId(null);
+      if (fallbackSnapshot) {
+        setGlobalSearchQuery(fallbackSnapshot.query);
+        setGlobalSearchSnapshot(fallbackSnapshot);
+        setSelectedGlobalSearchHistoryId(fallbackSnapshot.id);
+        setGlobalSearchProgress({ phase: "idle", scannedFiles: 0, totalFiles: 0 });
+        return;
+      }
+
+      setGlobalSearchSnapshot(null);
+      setSelectedGlobalSearchHistoryId(null);
+      setGlobalSearchProgress({ phase: "idle", scannedFiles: 0, totalFiles: 0 });
+    },
+    [globalSearchSnapshot?.id, persistGlobalSearchHistory, selectedGlobalSearchHistoryId]
+  );
+
+  const rememberGlobalSearchResultsScroll = useCallback((snapshotId: string, scrollTop: number) => {
+    globalSearchResultScrollTopsRef.current = {
+      ...globalSearchResultScrollTopsRef.current,
+      [snapshotId]: scrollTop
+    };
+  }, []);
+
+  const runGlobalSearch = useCallback(
+    async (rawQuery: string) => {
+      const query = rawQuery.trim();
+      if (!query) {
+        notify("warning", "请输入全表搜索内容。");
+        return;
+      }
+      const currentRoot = rootRef.current;
+      if (!currentRoot) {
+        notify("warning", "请先选择一个包含 CSV 的目录。");
+        return;
+      }
+
+      const serial = globalSearchSerialRef.current + 1;
+      globalSearchSerialRef.current = serial;
+      setGlobalSearchOpen(true);
+      setGlobalSearchQuery(rawQuery);
+      setGlobalSearchSearching(true);
+      setSelectedGlobalSearchHistoryId(null);
+      setSelectedGlobalSearchResultId(null);
+      setGlobalSearchSnapshot(null);
+      setGlobalSearchProgress({ phase: "loading", scannedFiles: 0, totalFiles: 0 });
+
+      try {
+        let searchRoot = currentRoot;
+        if (hasUnloadedLocalDirectory(currentRoot)) {
+          const loadedRoot = await loadLocalDescendants(currentRoot);
+          if (globalSearchSerialRef.current !== serial) {
+            return;
+          }
+          searchRoot = loadedRoot;
+          setRoot((current) => (current?.id === currentRoot.id ? mergeLoadedNodeState(current, loadedRoot) : current));
+        }
+
+        const files = buildSearchableCsvFiles(searchRoot, tabsRef.current);
+        if (globalSearchSerialRef.current !== serial) {
+          return;
+        }
+        setGlobalSearchProgress({ phase: "searching", scannedFiles: 0, totalFiles: files.length });
+
+        const snapshot = await searchCsvFiles({
+          query,
+          rootName: searchRoot.name,
+          rootPath: searchRoot.path,
+          files,
+          onProgress: ({ scannedFiles, totalFiles }) => {
+            if (globalSearchSerialRef.current === serial) {
+              setGlobalSearchProgress({ phase: "searching", scannedFiles, totalFiles });
+            }
+          },
+          onSnapshot: (nextSnapshot) => {
+            if (globalSearchSerialRef.current === serial) {
+              setGlobalSearchSnapshot(nextSnapshot);
+              setSelectedGlobalSearchHistoryId(nextSnapshot.id);
+            }
+          }
+        });
+        if (globalSearchSerialRef.current !== serial) {
+          return;
+        }
+
+        setGlobalSearchSnapshot(snapshot);
+        setSelectedGlobalSearchHistoryId(snapshot.id);
+        persistGlobalSearchHistory(addGlobalSearchHistory(globalSearchHistoryRef.current, snapshot));
+        notify(
+          snapshot.results.length > 0 ? "success" : "info",
+          `全表搜索完成：${snapshot.results.length} 项，${snapshot.matchedFileCount} 个表格`
+        );
+      } catch (error) {
+        if (globalSearchSerialRef.current === serial) {
+          notify("error", error instanceof Error ? error.message : String(error));
+        }
+      } finally {
+        if (globalSearchSerialRef.current === serial) {
+          setGlobalSearchSearching(false);
+        }
+      }
+    },
+    [notify, persistGlobalSearchHistory]
+  );
+
   const rememberTabScrollPosition = useCallback((tabId: string, position: GridScrollPosition) => {
     tabScrollPositionsRef.current[tabId] = position;
   }, []);
@@ -644,7 +842,7 @@ export function App() {
   }, [activeTabId, tabs]);
 
   const openFileRef = useCallback(
-    async (fileRef: CsvFileRef, options: OpenFileOptions = {}) => {
+    async (fileRef: CsvFileRef, options: OpenFileOptions = {}): Promise<string | null> => {
       const shouldActivate = options.activate ?? true;
       const targetPane = activePaneRef.current;
       if (shouldActivate) {
@@ -652,39 +850,77 @@ export function App() {
       }
       const existing = tabsRef.current.find((tab) => tab.path === fileRef.path);
       if (existing) {
+        if (options.targetCell || options.status || options.clearFilters) {
+          patchTab(existing.id, (current) => applyOpenFileOptionsToTab(current, options));
+        }
         if (shouldActivate) {
           activateTabInPane(existing.id, targetPane);
         }
-        return;
+        return existing.id;
       }
       if (openingPathsRef.current.has(fileRef.path)) {
         window.setTimeout(() => {
           const opened = tabsRef.current.find((tab) => tab.path === fileRef.path);
+          if (opened && (options.targetCell || options.status || options.clearFilters)) {
+            patchTab(opened.id, (current) => applyOpenFileOptionsToTab(current, options));
+          }
           if (shouldActivate && opened && pendingActivatePathRef.current === fileRef.path) {
             activateTabInPane(opened.id, targetPane);
           }
         }, 0);
-        return;
+        return null;
       }
 
       try {
         openingPathsRef.current.add(fileRef.path);
         const id = createTabId();
-        const tab = await createTabFromFileRef(fileRef, id);
-        setTabs((current) => [...current, tab]);
+        const tab = applyOpenFileOptionsToTab(await createTabFromFileRef(fileRef, id), options);
+        setTabs((current) => {
+          const next = [...current, tab];
+          tabsRef.current = next;
+          return next;
+        });
         if (shouldActivate && pendingActivatePathRef.current === fileRef.path) {
           activateTabInPane(id, targetPane);
         }
         if (!options.quiet) {
           notify("success", `已打开 ${fileRef.name}`);
         }
+        return id;
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
+        return null;
       } finally {
         window.setTimeout(() => openingPathsRef.current.delete(fileRef.path), 0);
       }
     },
-    [activateTabInPane, notify]
+    [activateTabInPane, notify, patchTab]
+  );
+
+  const openGlobalSearchResult = useCallback(
+    (result: GlobalSearchResult) => {
+      setSelectedGlobalSearchResultId(result.id);
+      runAfterActiveEditCommit(() => {
+        void (async () => {
+          const fileRef = resolveGlobalSearchResultFileRef(rootRef.current, result);
+          if (!fileRef) {
+            notify("warning", "请先载入包含该历史结果的目录。");
+            return;
+          }
+          const openedId = await openFileRef(fileRef, {
+            targetCell: result,
+            status: `已从全表搜索跳转到 ${result.cell}`,
+            clearFilters: true
+          });
+          if (!openedId) {
+            return;
+          }
+          setGlobalSearchOpen(false);
+          notify("success", `已跳转到 ${result.fileName} ${result.cell}`);
+        })();
+      });
+    },
+    [notify, openFileRef, runAfterActiveEditCommit]
   );
 
   const commitQuickOpenCandidate = useCallback(
@@ -2126,6 +2362,7 @@ export function App() {
         canReloadActive={Boolean(activeTab)}
         canSaveActive={Boolean(activeTab && (activeTab.dirty || activeEditDraftDirty) && activeTab.fileRef.writable)}
         canSaveAll={dirtyCount > 0}
+        canGlobalSearch={Boolean(root)}
         onFilterChange={setTreeFilter}
         onPickDirectory={handlePickDirectory}
         onSvnCommit={handleSvnCommit}
@@ -2133,6 +2370,7 @@ export function App() {
         onReloadActive={() => activeTabId && runAfterActiveEditCommit(() => void reloadActiveTabAndDirectoryTree(activeTabId))}
         onSaveActive={() => activeTabId && runAfterActiveEditCommit(() => void saveTab(activeTabId))}
         onSaveAll={() => runAfterActiveEditCommit(() => void saveAllDirtyTabs())}
+        onOpenGlobalSearch={openGlobalSearch}
         onToggleDirectory={handleToggleDirectory}
         onOpenFile={handleOpenTreeFile}
         onFileContextMenu={handleTreeFileContextMenu}
@@ -2774,6 +3012,26 @@ export function App() {
           onClose={closeQuickOpen}
         />
       ) : null}
+      {globalSearchOpen ? (
+        <GlobalSearchOverlay
+          query={globalSearchQuery}
+          snapshot={globalSearchSnapshot}
+          history={globalSearchHistory}
+          selectedHistoryId={selectedGlobalSearchHistoryId}
+          selectedResultId={selectedGlobalSearchResultId}
+          resultsScrollTop={globalSearchSnapshot ? (globalSearchResultScrollTopsRef.current[globalSearchSnapshot.id] ?? 0) : 0}
+          searching={globalSearchSearching}
+          progress={globalSearchProgress}
+          canSearch={Boolean(root)}
+          onQueryChange={setGlobalSearchQuery}
+          onRunSearch={(query) => runAfterActiveEditCommit(() => void runGlobalSearch(query))}
+          onSelectHistory={selectGlobalSearchHistory}
+          onDeleteHistory={deleteGlobalSearchHistory}
+          onOpenResult={openGlobalSearchResult}
+          onResultsScroll={rememberGlobalSearchResultsScroll}
+          onClose={closeGlobalSearch}
+        />
+      ) : null}
       {pathContextMenu ? (
         <div
           className="path-context-menu"
@@ -2808,6 +3066,23 @@ function FilePrompt() {
       <p>左侧选择本地目录后，点击 CSV 文件即可加入上方页签。干净页签会自动热刷新，未保存页签会保留编辑并标记磁盘冲突。</p>
     </div>
   );
+}
+
+function applyOpenFileOptionsToTab(tab: CsvTab, options: OpenFileOptions): CsvTab {
+  const selection = options.targetCell
+    ? clampSelectionToData(singleCellSelection(options.targetCell.row, options.targetCell.col), tab.data)
+    : tab.selection;
+  return {
+    ...tab,
+    selection,
+    columnFilters: options.clearFilters ? {} : tab.columnFilters,
+    scrollToSelectionToken: options.targetCell ? createSelectionScrollToken() : tab.scrollToSelectionToken,
+    status: options.status ?? tab.status
+  };
+}
+
+function createSelectionScrollToken(): number {
+  return Date.now() + Math.random();
 }
 
 function createTabId(): string {
@@ -3274,6 +3549,90 @@ function findFileNodeByPath(node: TreeNode, targetPath: string): TreeNode | null
     }
   }
   return null;
+}
+
+function resolveGlobalSearchResultFileRef(root: TreeNode | null, result: GlobalSearchResult): CsvFileRef | null {
+  const treeNode = root ? findFileNodeByPath(root, result.filePath) : null;
+  if (treeNode?.fileRef) {
+    return treeNode.fileRef;
+  }
+  if (isAbsoluteLocalPath(result.filePath)) {
+    return makeDesktopFileRef({ kind: "file", name: result.fileName, path: result.filePath });
+  }
+  return null;
+}
+
+function buildSearchableCsvFiles(root: TreeNode, tabs: CsvTab[]): SearchableCsvFile[] {
+  const openTabsByPath = new Map(tabs.map((tab) => [tab.path, tab]));
+  return collectFileNodes(root).flatMap((node): SearchableCsvFile[] => {
+    const fileRef = node.fileRef;
+    const filePath = fileRef?.path ?? node.path;
+    return [
+      {
+        name: node.name,
+        path: filePath,
+        relativePath: makeRelativeSearchPath(root.path, filePath),
+        async readData() {
+          const openTab = openTabsByPath.get(filePath);
+          if (openTab) {
+            return openTab.data;
+          }
+          if (!fileRef) {
+            throw new Error("文件引用不可用");
+          }
+          const opened = await fileRef.read();
+          return parseCsvText(opened.text).data;
+        }
+      }
+    ];
+  });
+}
+
+function collectFileNodes(node: TreeNode): TreeNode[] {
+  if (node.kind === "file") {
+    return [node];
+  }
+  return (node.children ?? []).flatMap(collectFileNodes);
+}
+
+function makeRelativeSearchPath(rootPath: string, filePath: string): string {
+  const normalizedRoot = trimTrailingSlashes(rootPath.replace(/\\/g, "/"));
+  const normalizedFile = filePath.replace(/\\/g, "/");
+  if (!normalizedRoot) {
+    return normalizedFile;
+  }
+  const lowerRoot = normalizedRoot.toLowerCase();
+  const lowerFile = normalizedFile.toLowerCase();
+  if (lowerFile === lowerRoot) {
+    return pathBaseName(normalizedFile);
+  }
+  if (lowerFile.startsWith(`${lowerRoot}/`)) {
+    return normalizedFile.slice(normalizedRoot.length + 1);
+  }
+  return normalizedFile;
+}
+
+function trimTrailingSlashes(value: string): string {
+  return value.replace(/[\\/]+$/, "");
+}
+
+function pathBaseName(value: string): string {
+  return value.split(/[\\/]/).filter(Boolean).pop() ?? value;
+}
+
+function isAbsoluteLocalPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\") || value.startsWith("//");
+}
+
+function loadStoredGlobalSearchHistory(): GlobalSearchSnapshot[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    return sanitizeGlobalSearchHistory(JSON.parse(window.localStorage.getItem(GLOBAL_SEARCH_HISTORY_STORAGE_KEY) ?? "[]"));
+  } catch {
+    return [];
+  }
 }
 
 function favoritesEqual(left: CsvFavoriteFile[], right: CsvFavoriteFile[]): boolean {

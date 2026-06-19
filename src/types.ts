@@ -77,6 +77,48 @@ export type CsvWorkspaceState = {
   activeFilePath: string | null;
 };
 
+export type GlobalSearchResult = {
+  id: string;
+  fileName: string;
+  filePath: string;
+  relativePath: string;
+  row: number;
+  col: number;
+  cell: string;
+  value: string;
+  preview: string;
+  primaryKey: string;
+  fieldName: string;
+  contextBefore: string;
+  contextAfter: string;
+  rowContext: string;
+};
+
+export type GlobalSearchFileError = {
+  fileName: string;
+  filePath: string;
+  relativePath: string;
+  message: string;
+};
+
+export type GlobalSearchSnapshot = {
+  id: string;
+  query: string;
+  createdAt: number;
+  rootName: string;
+  rootPath: string;
+  searchedFileCount: number;
+  matchedFileCount: number;
+  results: GlobalSearchResult[];
+  errors: GlobalSearchFileError[];
+};
+
+export type GlobalSearchProgress = {
+  phase: "idle" | "loading" | "searching";
+  scannedFiles: number;
+  totalFiles: number;
+};
+
 export type CsvTab = {
   id: string;
   name: string;
@@ -105,6 +147,7 @@ export type CsvTab = {
   freezeCols: number;
   colWidths: Record<number, number>;
   columnFilters: CsvColumnFilters;
+  scrollToSelectionToken?: number;
   undoStack: CsvTabHistorySnapshot[];
   redoStack: CsvTabHistorySnapshot[];
   status?: string;

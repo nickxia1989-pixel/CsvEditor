@@ -221,6 +221,7 @@ export function GridEditor({
   const dragAnchorRef = useRef<DragSelectionState | null>(null);
   const composingInputRef = useRef(false);
   const pendingSelectionScrollRef = useRef(false);
+  const handledSelectionScrollTokenRef = useRef<number | undefined>(undefined);
   const pendingGridFocusRef = useRef(false);
   const [viewport, setViewport] = useState<ViewportState>({
     width: 800,
@@ -459,6 +460,14 @@ export function GridEditor({
     const previousRow = displayRows[displayIndex - 1];
     return Math.max(0, row - previousRow - 1);
   };
+
+  useEffect(() => {
+    if (tab.scrollToSelectionToken === undefined || handledSelectionScrollTokenRef.current === tab.scrollToSelectionToken) {
+      return;
+    }
+    handledSelectionScrollTokenRef.current = tab.scrollToSelectionToken;
+    pendingSelectionScrollRef.current = true;
+  }, [tab.scrollToSelectionToken]);
 
   useEffect(() => {
     const viewportElement = viewportRef.current;

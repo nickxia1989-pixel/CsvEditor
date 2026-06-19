@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { GLOBAL_SEARCH_HISTORY_STORAGE_KEY } from "./lib/globalSearch";
 import type { BrowserDirectoryHandle, BrowserFileHandle, CsvDesktopApi } from "./lib/fileRefs";
 import type { CsvFavoriteFile } from "./types";
 
@@ -246,6 +247,75 @@ describe("App local directory flow", () => {
       expect(tabNames[1]).toContain("third.csv");
       expect(tabNames[2]).toContain("second.csv");
     });
+  });
+
+  it("searches all tables from the sidebar popup, stores history, and opens a clicked result", async () => {
+    const nested = new MockDirectoryHandle("skill", [
+      ["skill.csv", new MockFileHandle("skill.csv", "说明,说明\nid,name\n1,Needle Value\n2,Other")]
+    ]);
+    const root = new MockDirectoryHandle("Tables", [
+      ["root.csv", new MockFileHandle("root.csv", "ID,Name\n1,Root")],
+      ["skill", nested]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    await screen.findByRole("button", { name: "root.csv" });
+
+    fireEvent.click(screen.getByRole("button", { name: "全表搜索" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "全表搜索内容" }), { target: { value: "needle" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    const result = await screen.findByRole("listitem", { name: /Needle Value/ });
+    expect(result).toBeTruthy();
+    expect(result).toHaveTextContent(/表格\s*skill\.csv/);
+    expect(result).toHaveTextContent(/ID\s*1/);
+    expect(result).toHaveTextContent(/字段\s*name/);
+    expect(result).not.toHaveTextContent("skill/skill.csv");
+    expect(result).not.toHaveTextContent("B3");
+    expect(result).not.toHaveTextContent("1 / Needle Value");
+    expect(result).not.toHaveTextContent("同行：");
+    expect(result).not.toHaveTextContent("A2");
+
+    const resultsList = screen.getByRole("list", { name: "全表搜索结果" });
+    fireEvent.scroll(resultsList, { target: { scrollTop: 64 } });
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(GLOBAL_SEARCH_HISTORY_STORAGE_KEY) ?? "[]");
+      expect(stored).toHaveLength(1);
+      expect(stored[0].query).toBe("needle");
+      expect(stored[0].results[0]).toMatchObject({
+        fileName: "skill.csv",
+        relativePath: "skill/skill.csv",
+        row: 2,
+        col: 1,
+        primaryKey: "1",
+        fieldName: "name"
+      });
+    });
+
+    fireEvent.click(result);
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "skill.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("Needle Value");
+
+    fireEvent.click(screen.getByRole("button", { name: "全表搜索" }));
+    const history = screen.getByLabelText("全表搜索历史");
+    expect(within(history).getByTitle("needle - Tables")).toBeInTheDocument();
+    const panel = screen.getByRole("dialog", { name: "全表搜索" });
+    const reopenedResult = within(panel).getByRole("listitem", { name: /Needle Value/ });
+    expect(reopenedResult).toHaveClass("active");
+    expect(screen.getByRole("list", { name: "全表搜索结果" }).scrollTop).toBe(64);
+
+    fireEvent.click(within(history).getByRole("button", { name: "删除搜索记录 needle" }));
+    await waitFor(() => expect(within(history).queryByTitle("needle - Tables")).not.toBeInTheDocument());
+    expect(screen.getByText("暂无搜索记录")).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem(GLOBAL_SEARCH_HISTORY_STORAGE_KEY) ?? "[]")).toEqual([]);
   });
 
   it("keeps a desktop favorite added before persisted favorites finish loading", async () => {
