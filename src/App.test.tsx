@@ -74,11 +74,38 @@ class MockDirectoryHandle implements BrowserDirectoryHandle {
   }
 }
 
+function mockClipboard() {
+  const writeText = vi.fn(async () => undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText }
+  });
+  return writeText;
+}
+
+function stubRect(element: HTMLElement, left: number, width: number) {
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: vi.fn(() => ({
+      x: left,
+      y: 0,
+      left,
+      top: 0,
+      right: left + width,
+      bottom: 30,
+      width,
+      height: 30,
+      toJSON: () => ({})
+    }))
+  });
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   window.localStorage.clear();
   Reflect.deleteProperty(window, "showDirectoryPicker");
   Reflect.deleteProperty(window, "csvDesktop");
+  Reflect.deleteProperty(navigator, "clipboard");
 });
 
 describe("App local directory flow", () => {
@@ -161,6 +188,63 @@ describe("App local directory flow", () => {
           source: "local"
         }
       ]);
+    });
+  });
+
+  it("copies file paths from tree, tab, and toolbar entries and reorders tabs by drag", async () => {
+    const writeText = mockClipboard();
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", new MockFileHandle("first.csv", "ID,Name\n1,Alpha")],
+      ["second.csv", new MockFileHandle("second.csv", "ID,Name\n2,Beta")],
+      ["third.csv", new MockFileHandle("third.csv", "ID,Name\n3,Gamma")]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    const firstRow = await screen.findByRole("button", { name: "first.csv" });
+
+    fireEvent.contextMenu(firstRow, { clientX: 24, clientY: 32 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "复制文件路径" }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("Tables/first.csv"));
+
+    fireEvent.click(firstRow);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "third.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "third.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.click(screen.getByRole("tab", { name: "second.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "复制路径" }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("Tables/second.csv"));
+
+    const tabForFirst = screen.getByRole("tab", { name: "first.csv" });
+    fireEvent.contextMenu(tabForFirst, { clientX: 88, clientY: 18 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "复制文件路径" }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("Tables/first.csv"));
+
+    const firstDropTarget = screen.getByRole("tab", { name: "first.csv" });
+    const tabForThird = screen.getByRole("tab", { name: "third.csv" });
+    stubRect(screen.getByRole("tablist", { name: "Open CSV tabs" }), 0, 500);
+    stubRect(firstDropTarget, 100, 120);
+    fireEvent.pointerDown(tabForThird, { pointerId: 1, button: 0, clientX: 250, clientY: 15 });
+    fireEvent.pointerMove(tabForThird, { pointerId: 1, clientX: 218, clientY: 15 });
+    expect(tabForThird).toHaveClass("dragging");
+    expect(firstDropTarget).toHaveClass("drop-after");
+    expect(container.querySelector(".tab-drop-indicator")).toBeInTheDocument();
+    fireEvent.pointerUp(tabForThird, { pointerId: 1, clientX: 218, clientY: 15 });
+
+    await waitFor(() => {
+      const tabNames = screen.getAllByRole("tab").map((tab) => tab.textContent ?? "");
+      expect(tabNames[0]).toContain("first.csv");
+      expect(tabNames[1]).toContain("third.csv");
+      expect(tabNames[2]).toContain("second.csv");
     });
   });
 

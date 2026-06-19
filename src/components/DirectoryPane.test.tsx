@@ -117,6 +117,22 @@ describe("DirectoryPane", () => {
     expect(props.onSaveAll).toHaveBeenCalledTimes(1);
   });
 
+  it("opens a file context menu target from a right click", () => {
+    const onFileContextMenu = vi.fn();
+    renderDirectory(createLargeRoot(3), { onFileContextMenu });
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "file-000.csv" }), { clientX: 18, clientY: 42 });
+
+    expect(onFileContextMenu).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "file-000.csv",
+        path: "Tables/file-000.csv",
+        kind: "file"
+      }),
+      { x: 18, y: 42 }
+    );
+  });
+
   it("renders favorite files and forwards open and remove actions", () => {
     const { props } = renderDirectory(createLargeRoot(3), {
       favorites: [

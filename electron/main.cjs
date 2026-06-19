@@ -513,6 +513,32 @@ async function runSmokeTestWhenLoaded(window) {
             ctrlKey: true
           }));
         };
+        const openContextMenu = (element) => {
+          element.dispatchEvent(new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            button: 2,
+            ...elementCenter(element)
+          }));
+        };
+        const pointerUpElement = async (element, options = {}) => {
+          const EventClass = window.PointerEvent || window.MouseEvent;
+          const dispatch = () => {
+            element.dispatchEvent(new EventClass("pointerup", {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              ...options
+            }));
+          };
+          dispatch();
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          dispatch();
+        };
+        const clickCopyPathMenuItem = async () => {
+          await waitFor(() => findButton("复制文件路径"), "copy path menu item missing");
+          clickElement(findButton("复制文件路径"));
+        };
         const openQuickFilePicker = () => {
           window.dispatchEvent(new KeyboardEvent("keydown", {
             bubbles: true,
@@ -531,6 +557,15 @@ async function runSmokeTestWhenLoaded(window) {
         if (!target) {
           throw new Error("smoke.csv not listed");
         }
+        const copiedPaths = [];
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: async (text) => {
+              copiedPaths.push(text);
+            }
+          }
+        });
         const opened = await api.readFile(target.path);
         const initialText = new TextDecoder("utf-8", { ignoreBOM: false }).decode(opened.data);
         await api.writeFile(target.path, new TextEncoder().encode("\\uFEFFA,B\\r\\n3,4\\r\\n5,other\\r\\n6,4\\r\\n"));
@@ -546,8 +581,29 @@ async function runSmokeTestWhenLoaded(window) {
           "smoke.csv UI row missing"
         );
         const fileRow = Array.from(document.querySelectorAll(".tree-row.file")).find((row) => row.textContent?.includes("smoke.csv"));
+        openContextMenu(fileRow);
+        await clickCopyPathMenuItem();
+        await waitFor(() => copiedPaths.at(-1) === target.path, "tree context copy path did not write clipboard");
+        const treePathCopied = copiedPaths.at(-1) === target.path;
         clickElement(fileRow);
         await waitFor(() => document.querySelector(".grid-cell[aria-label='A1']") && document.querySelector(".formula-bar textarea"), "grid UI missing");
+        const toolbarCopyPathButton = findButton("复制路径");
+        if (!toolbarCopyPathButton || toolbarCopyPathButton.disabled) {
+          throw new Error("copy path toolbar button missing or disabled");
+        }
+        clickElement(toolbarCopyPathButton);
+        await waitFor(() => copiedPaths.at(-1) === target.path, "toolbar copy path did not write clipboard");
+        const toolbarPathCopied = copiedPaths.at(-1) === target.path;
+        const smokeTabForPathCopy = Array.from(document.querySelectorAll("[role='tab']")).find(
+          (tab) => tab.textContent?.includes("smoke.csv") && !tab.textContent?.includes("smoke-tab")
+        );
+        if (!smokeTabForPathCopy) {
+          throw new Error("smoke tab missing for path context menu");
+        }
+        openContextMenu(smokeTabForPathCopy);
+        await clickCopyPathMenuItem();
+        await waitFor(() => copiedPaths.at(-1) === target.path, "tab context copy path did not write clipboard");
+        const tabPathCopied = copiedPaths.at(-1) === target.path;
         const favoritesBefore = api.getFavorites ? await api.getFavorites() : [];
         let favoriteListed = false;
         let favoritePersisted = false;
@@ -1024,6 +1080,44 @@ async function runSmokeTestWhenLoaded(window) {
             "extra smoke tab not opened: " + entry.name
           );
         }
+        const tabLabel = (tab) => tab.textContent?.replace(/\\s+/g, " ").trim() ?? "";
+        const tabsBeforeReorder = Array.from(document.querySelectorAll("[role='tab']")).map(tabLabel);
+        const tabDragSource = Array.from(document.querySelectorAll("[role='tab']")).find((tab) =>
+          tab.textContent?.includes("smoke-tab-00.csv")
+        );
+        const tabDropTarget = Array.from(document.querySelectorAll("[role='tab']")).find(
+          (tab) => tab.textContent?.includes("smoke.csv") && !tab.textContent?.includes("smoke-tab")
+        );
+        if (!tabDragSource || !tabDropTarget) {
+          throw new Error("tab drag reorder targets missing");
+        }
+        const dropRect = tabDropTarget.getBoundingClientRect();
+        pointerDownElement(tabDragSource, elementCenter(tabDragSource));
+        pointerMoveElement(tabDragSource, {
+          clientX: dropRect.right - 2,
+          clientY: dropRect.top + dropRect.height / 2
+        });
+        await waitFor(() => document.querySelector(".tab-drop-indicator"), "tab drop indicator did not appear");
+        const tabDropIndicator = document.querySelector(".tab-drop-indicator");
+        const tabDropFeedback = Boolean(tabDropIndicator) && Boolean(document.querySelector(".tab.drop-before, .tab.drop-after"));
+        const tabDropIndicatorRect = rectSummary(tabDropIndicator);
+        await pointerUpElement(tabDragSource, {
+          clientX: dropRect.right - 2,
+          clientY: dropRect.top + dropRect.height / 2
+        });
+        await waitFor(
+          () => {
+            const labels = Array.from(document.querySelectorAll("[role='tab']")).map(tabLabel);
+            const targetIndex = labels.findIndex((label) => label.includes("smoke.csv") && !label.includes("smoke-tab"));
+            const sourceIndex = labels.findIndex((label) => label.includes("smoke-tab-00.csv"));
+            return targetIndex >= 0 && sourceIndex === targetIndex + 1;
+          },
+          "tab drag reorder did not place source after target"
+        );
+        const tabsAfterReorder = Array.from(document.querySelectorAll("[role='tab']")).map(tabLabel);
+        const reorderTargetIndex = tabsAfterReorder.findIndex((label) => label.includes("smoke.csv") && !label.includes("smoke-tab"));
+        const reorderSourceIndex = tabsAfterReorder.findIndex((label) => label.includes("smoke-tab-00.csv"));
+        const tabReorderMoved = reorderTargetIndex >= 0 && reorderSourceIndex === reorderTargetIndex + 1;
         const buttons = Array.from(document.querySelectorAll("button")).map((button) => ({
           text: button.textContent?.trim() ?? "",
           disabled: button.disabled
@@ -1060,6 +1154,19 @@ async function runSmokeTestWhenLoaded(window) {
             listed: favoriteListed,
             persisted: favoritePersisted,
             addButtonDisabled: favoriteButtonDisabledAfterAdd
+          },
+          pathCopy: {
+            tree: treePathCopied,
+            toolbar: toolbarPathCopied,
+            tab: tabPathCopied,
+            lastCopied: copiedPaths.at(-1) ?? ""
+          },
+          tabReorder: {
+            before: tabsBeforeReorder,
+            after: tabsAfterReorder,
+            dropFeedback: tabDropFeedback,
+            indicatorRect: tabDropIndicatorRect,
+            movedAfterTarget: tabReorderMoved
           },
           buttons,
           windowControls,
@@ -1140,12 +1247,19 @@ async function runSmokeTestWhenLoaded(window) {
       !buttonTexts.includes("刷新") ||
       !buttonTexts.includes("保存") ||
       !buttonTexts.includes("全部保存") ||
+      !buttonTexts.includes("复制路径") ||
       !buttonTexts.includes("加入收藏")
     ) {
-      throw new Error("桌面左侧操作按钮烟测不正确。");
+      throw new Error("桌面操作按钮烟测不正确。");
     }
     if (!result.favorites?.listed || !result.favorites.persisted || !result.favorites.addButtonDisabled) {
       throw new Error("桌面收藏功能烟测不正确。");
+    }
+    if (!result.pathCopy?.tree || !result.pathCopy.toolbar || !result.pathCopy.tab) {
+      throw new Error(`桌面复制路径烟测不正确: ${JSON.stringify(result.pathCopy)}`);
+    }
+    if (!result.tabReorder?.dropFeedback || !result.tabReorder.indicatorRect || !result.tabReorder.movedAfterTarget) {
+      throw new Error(`桌面页签拖拽排序烟测不正确: ${JSON.stringify(result.tabReorder)}`);
     }
     const windowControlLabels = result.windowControls.map((control) => control.label);
     if (!windowControlLabels.includes("最小化") || !windowControlLabels.includes("最大化") || !windowControlLabels.includes("关闭")) {

@@ -79,6 +79,7 @@ function createGridProps(tab = createTab()) {
     canAddActiveFavorite: true,
     isActiveFavorite: false,
     onAddActiveFavorite: vi.fn(),
+    onCopyPath: vi.fn(),
     scrollPosition: { scrollTop: 0, scrollLeft: 0 },
     onScrollPositionChange: vi.fn(),
     onReplaceCurrent: vi.fn(),
@@ -278,6 +279,7 @@ describe("GridEditor editing workflow", () => {
     expect(detailsEditor.tagName).toBe("TEXTAREA");
     expect(detailsEditor).toHaveAttribute("rows", "1");
     expect(tools).toContainElement(screen.getByRole("button", { name: "加入收藏" }));
+    expect(tools).toContainElement(screen.getByRole("button", { name: "复制路径" }));
   });
 
   it("forwards the favorite action from the tool area", () => {
@@ -286,6 +288,14 @@ describe("GridEditor editing workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "加入收藏" }));
 
     expect(props.onAddActiveFavorite).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards the copy path action from the tool area", () => {
+    const props = renderGrid();
+
+    fireEvent.click(screen.getByRole("button", { name: "复制路径" }));
+
+    expect(props.onCopyPath).toHaveBeenCalledTimes(1);
   });
 
   it("clears the copied highlight when a structural edit starts", async () => {

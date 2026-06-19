@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -39,6 +39,7 @@ type DirectoryPaneProps = {
   onSaveAll(): void;
   onToggleDirectory(node: TreeNode): void;
   onOpenFile(node: TreeNode): void;
+  onFileContextMenu?(node: TreeNode, point: { x: number; y: number }): void;
   onOpenFavorite(favorite: CsvFavoriteFile): void;
   onRemoveFavorite(favorite: CsvFavoriteFile): void;
 };
@@ -63,6 +64,7 @@ export function DirectoryPane({
   onSaveAll,
   onToggleDirectory,
   onOpenFile,
+  onFileContextMenu,
   onOpenFavorite,
   onRemoveFavorite
 }: DirectoryPaneProps) {
@@ -253,6 +255,7 @@ export function DirectoryPane({
                   searchActive={Boolean(normalizedFilter)}
                   onToggleDirectory={onToggleDirectory}
                   onOpenFile={onOpenFile}
+                  onFileContextMenu={onFileContextMenu}
                 />
               </div>
             ))}
@@ -274,9 +277,10 @@ type TreeRowProps = {
   searchActive: boolean;
   onToggleDirectory(node: TreeNode): void;
   onOpenFile(node: TreeNode): void;
+  onFileContextMenu?(node: TreeNode, point: { x: number; y: number }): void;
 };
 
-function TreeRow({ node, depth, searchActive, onToggleDirectory, onOpenFile }: TreeRowProps) {
+function TreeRow({ node, depth, searchActive, onToggleDirectory, onOpenFile, onFileContextMenu }: TreeRowProps) {
   const isDirectory = node.kind === "directory";
   const visuallyExpanded = isDirectory && (node.expanded || (searchActive && Boolean(node.children?.length)));
   const icon = isDirectory ? (
@@ -297,6 +301,13 @@ function TreeRow({ node, depth, searchActive, onToggleDirectory, onOpenFile }: T
         className={`tree-row ${isDirectory ? "directory" : "file"}`}
         style={{ paddingLeft: 10 + depth * 14 }}
         onClick={() => (isDirectory ? onToggleDirectory(node) : onOpenFile(node))}
+        onContextMenu={(event: ReactMouseEvent<HTMLButtonElement>) => {
+          if (isDirectory || !onFileContextMenu) {
+            return;
+          }
+          event.preventDefault();
+          onFileContextMenu(node, { x: event.clientX, y: event.clientY });
+        }}
         title={node.path}
       >
         {icon}

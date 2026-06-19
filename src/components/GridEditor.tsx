@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronUp,
   Columns3,
+  Copy,
   Filter,
   Lock,
   Minus,
@@ -81,6 +82,7 @@ type GridEditorProps = {
   canAddActiveFavorite: boolean;
   isActiveFavorite: boolean;
   onAddActiveFavorite(): void;
+  onCopyPath?(): void;
   scrollPosition: GridScrollPosition;
   onScrollPositionChange(tabId: string, position: GridScrollPosition): void;
   onReplaceCurrent(query: string): void;
@@ -190,6 +192,7 @@ export function GridEditor({
   canAddActiveFavorite,
   isActiveFavorite,
   onAddActiveFavorite,
+  onCopyPath,
   scrollPosition,
   onScrollPositionChange,
   onReplaceCurrent,
@@ -1944,6 +1947,15 @@ export function GridEditor({
           </button>
         </div>
         <div className="tool-group refresh-tools">
+          <button
+            className="tool-button"
+            onClick={() => runAfterCommittingEdit(() => onCopyPath?.())}
+            disabled={!onCopyPath}
+            title="复制当前表格完整路径"
+          >
+            <Copy size={15} />
+            复制路径
+          </button>
           <button
             className={`tool-button ${tab.autoRefresh ? "active-toggle" : ""}`}
             onClick={() => runAfterCommittingEdit(() => onSetAutoRefresh(!tab.autoRefresh))}

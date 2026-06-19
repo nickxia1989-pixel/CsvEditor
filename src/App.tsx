@@ -22,7 +22,7 @@ import {
 import { DirectoryPane } from "./components/DirectoryPane";
 import { COMMIT_ACTIVE_EDIT_EVENT, GridEditor } from "./components/GridEditor";
 import { QuickOpenOverlay } from "./components/QuickOpenOverlay";
-import { TabStrip } from "./components/TabStrip";
+import { TabStrip, type TabDropPlacement } from "./components/TabStrip";
 import { TabSwitcherOverlay } from "./components/TabSwitcherOverlay";
 import {
   maxColumnCount,
@@ -145,6 +145,12 @@ type QuickOpenState = {
   selectedId: string | null;
   loading: boolean;
 };
+type PathContextMenuState = {
+  name: string;
+  path: string;
+  x: number;
+  y: number;
+} | null;
 
 export function App() {
   const [root, setRoot] = useState<TreeNode | null>(null);
@@ -165,6 +171,7 @@ export function App() {
   const [desktopWindowState, setDesktopWindowState] = useState<DesktopWindowState>(DEFAULT_DESKTOP_WINDOW_STATE);
   const [tabSwitcher, setTabSwitcher] = useState<TabSwitcherSession | null>(null);
   const [quickOpen, setQuickOpen] = useState<QuickOpenState | null>(null);
+  const [pathContextMenu, setPathContextMenu] = useState<PathContextMenuState>(null);
   const [workspaceStateLoaded, setWorkspaceStateLoaded] = useState(false);
   const rootRef = useRef(root);
   const tabsRef = useRef(tabs);
@@ -215,6 +222,28 @@ export function App() {
   useEffect(() => {
     activePaneRef.current = activePane;
   }, [activePane]);
+
+  useEffect(() => {
+    if (!pathContextMenu) {
+      return undefined;
+    }
+    const closeMenu = () => setPathContextMenu(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeMenu();
+      }
+    };
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("blur", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("blur", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, [pathContextMenu]);
 
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [activeTabId, tabs]);
   const activeFavorite = useMemo(
@@ -293,6 +322,60 @@ export function App() {
     window.setTimeout(() => {
       setNotice((current) => (current?.message === message ? null : current));
     }, 4200);
+  }, []);
+
+  const openPathContextMenu = useCallback((target: { name: string; path: string }, point: { x: number; y: number }) => {
+    setPathContextMenu({
+      ...target,
+      x: clamp(point.x, 8, Math.max(8, window.innerWidth - 196)),
+      y: clamp(point.y, 8, Math.max(8, window.innerHeight - 72))
+    });
+  }, []);
+
+  const copyPathToClipboard = useCallback(
+    async (target: { name: string; path: string }) => {
+      try {
+        await writeClipboardText(target.path);
+        notify("success", `已复制路径 ${target.name}`);
+      } catch (error) {
+        notify("error", error instanceof Error ? error.message : String(error));
+      }
+    },
+    [notify]
+  );
+
+  const copyActiveTabPath = useCallback(() => {
+    if (!activeTab) {
+      notify("warning", "没有可复制路径的当前文档。");
+      return;
+    }
+    void copyPathToClipboard(activeTab);
+  }, [activeTab, copyPathToClipboard, notify]);
+
+  const handleTreeFileContextMenu = useCallback(
+    (node: TreeNode, point: { x: number; y: number }) => {
+      const path = node.fileRef?.path ?? node.path;
+      openPathContextMenu({ name: node.name, path }, point);
+    },
+    [openPathContextMenu]
+  );
+
+  const handleTabContextMenu = useCallback(
+    (tab: CsvTab, point: { x: number; y: number }) => {
+      openPathContextMenu({ name: tab.name, path: tab.path }, point);
+    },
+    [openPathContextMenu]
+  );
+
+  const handleReorderTabs = useCallback((draggedId: string, targetId: string, placement: TabDropPlacement) => {
+    setTabs((current) => {
+      const next = reorderTabsByDrop(current, draggedId, targetId, placement);
+      if (next === current) {
+        return current;
+      }
+      tabsRef.current = next;
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -1688,6 +1771,7 @@ export function App() {
         canAddActiveFavorite={!paneFavorite}
         isActiveFavorite={paneFavorite}
         onAddActiveFavorite={() => handleAddFavoriteForTab(tab)}
+        onCopyPath={() => void copyPathToClipboard(tab)}
         onReplaceCurrent={(query) =>
           updatePaneTab((current) => {
             const normalizedQuery = query.trim();
@@ -2051,6 +2135,7 @@ export function App() {
         onSaveAll={() => runAfterActiveEditCommit(() => void saveAllDirtyTabs())}
         onToggleDirectory={handleToggleDirectory}
         onOpenFile={handleOpenTreeFile}
+        onFileContextMenu={handleTreeFileContextMenu}
         onOpenFavorite={handleOpenFavorite}
         onRemoveFavorite={handleRemoveFavorite}
       />
@@ -2077,6 +2162,8 @@ export function App() {
             activeTabId={activeTabId}
             onActivate={activateTabAfterEditCommit}
             onClose={closeTabAfterEditCommit}
+            onContextMenu={handleTabContextMenu}
+            onReorder={handleReorderTabs}
           />
           <div className="topbar-view-controls">
             <button
@@ -2392,6 +2479,7 @@ export function App() {
             canAddActiveFavorite={!activeFavorite}
             isActiveFavorite={activeFavorite}
             onAddActiveFavorite={handleAddActiveFavorite}
+            onCopyPath={copyActiveTabPath}
             onReplaceCurrent={(query) =>
               updateActiveTab((tab) => {
                 const normalizedQuery = query.trim();
@@ -2685,6 +2773,28 @@ export function App() {
           onOpen={commitQuickOpenCandidate}
           onClose={closeQuickOpen}
         />
+      ) : null}
+      {pathContextMenu ? (
+        <div
+          className="path-context-menu"
+          role="menu"
+          aria-label={`${pathContextMenu.name} 操作`}
+          style={{ left: pathContextMenu.x, top: pathContextMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = pathContextMenu;
+              setPathContextMenu(null);
+              void copyPathToClipboard(target);
+            }}
+          >
+            复制文件路径
+          </button>
+        </div>
       ) : null}
     </div>
   );
@@ -3196,6 +3306,52 @@ function mergeFavoriteFiles(primary: CsvFavoriteFile[], secondary: CsvFavoriteFi
     }
   }
   return merged;
+}
+
+function reorderTabsByDrop(tabs: CsvTab[], draggedId: string, targetId: string, placement: TabDropPlacement): CsvTab[] {
+  if (draggedId === targetId) {
+    return tabs;
+  }
+  const draggedIndex = tabs.findIndex((tab) => tab.id === draggedId);
+  if (draggedIndex < 0) {
+    return tabs;
+  }
+  const draggedTab = tabs[draggedIndex];
+  const remainingTabs = tabs.filter((tab) => tab.id !== draggedId);
+  const targetIndex = remainingTabs.findIndex((tab) => tab.id === targetId);
+  if (targetIndex < 0) {
+    return tabs;
+  }
+  const insertIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+  const nextTabs = [
+    ...remainingTabs.slice(0, insertIndex),
+    draggedTab,
+    ...remainingTabs.slice(insertIndex)
+  ];
+  return nextTabs.every((tab, index) => tab.id === tabs[index]?.id) ? tabs : nextTabs;
+}
+
+async function writeClipboardText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    if (!document.execCommand?.("copy")) {
+      throw new Error("当前环境不允许写入剪贴板。");
+    }
+  } finally {
+    textarea.remove();
+  }
 }
 
 function clamp(value: number, min: number, max: number): number {

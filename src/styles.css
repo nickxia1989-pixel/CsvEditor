@@ -464,6 +464,7 @@ button:disabled {
 }
 
 .tab-strip {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
@@ -483,6 +484,7 @@ button:disabled {
 }
 
 .tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -497,6 +499,8 @@ button:disabled {
   background: #eaf0f1;
   color: #384a54;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
   -webkit-app-region: no-drag;
 }
 
@@ -514,6 +518,29 @@ button:disabled {
     inset 0 3px 0 var(--accent),
     0 2px 8px rgba(15, 82, 76, 0.13);
   font-weight: 700;
+}
+
+.tab.dragging {
+  opacity: 0.46;
+}
+
+.tab.drop-before,
+.tab.drop-after {
+  background: #fff8eb;
+}
+
+.tab-drop-indicator {
+  position: absolute;
+  width: 4px;
+  border-radius: 2px;
+  background: #f59e0b;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.96),
+    0 0 0 4px rgba(245, 158, 11, 0.32),
+    0 7px 16px rgba(180, 83, 9, 0.28);
+  pointer-events: none;
+  transform: translateX(-50%);
+  z-index: 30;
 }
 
 .tab-name {
@@ -556,6 +583,40 @@ button:disabled {
 .tab-close:hover {
   background: rgba(15, 82, 76, 0.12);
   color: var(--accent-strong);
+}
+
+.path-context-menu {
+  position: fixed;
+  z-index: 2500;
+  min-width: 172px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(14, 35, 43, 0.18);
+  -webkit-app-region: no-drag;
+}
+
+.path-context-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #203038;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.path-context-menu button:hover,
+.path-context-menu button:focus-visible {
+  background: #eaf3f2;
+  color: var(--accent-strong);
+  outline: none;
 }
 
 .tab-switcher-scrim {
