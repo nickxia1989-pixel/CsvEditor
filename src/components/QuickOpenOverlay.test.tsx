@@ -107,6 +107,30 @@ describe("QuickOpenOverlay", () => {
     expect(listbox.scrollTop).toBe(132);
   });
 
+  it("resets result scroll position when the query changes", () => {
+    const candidates = Array.from({ length: 12 }, (_, index) => createCandidate(index));
+    const props = {
+      query: "",
+      candidates,
+      selectedId: null,
+      loading: false,
+      onQueryChange: vi.fn(),
+      onMoveSelection: vi.fn(),
+      onSelectEdge: vi.fn(),
+      onOpen: vi.fn(),
+      onClose: vi.fn()
+    };
+    const { rerender } = render(<QuickOpenOverlay {...props} />);
+    const listbox = screen.getByRole("listbox", { name: "快速打开文件结果" });
+    listbox.scrollTop = 320;
+    listbox.scrollLeft = 24;
+
+    rerender(<QuickOpenOverlay {...props} query="table" />);
+
+    expect(listbox.scrollTop).toBe(0);
+    expect(listbox.scrollLeft).toBe(0);
+  });
+
   it("keeps the selected candidate visible", () => {
     const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {

@@ -418,7 +418,7 @@ export function App() {
   }, [notify, replaceTabSwitcher]);
 
   const updateQuickOpenQuery = useCallback((query: string) => {
-    setQuickOpen((current) => (current ? { ...current, query } : current));
+    setQuickOpen((current) => (current ? { ...current, query, selectedId: null } : current));
   }, []);
 
   const moveQuickOpenSelection = useCallback((delta: number) => {

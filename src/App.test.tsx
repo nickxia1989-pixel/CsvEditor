@@ -1324,6 +1324,44 @@ describe("App local directory flow", () => {
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
   });
 
+  it("resets Ctrl+P selection to the best result when the search query changes", async () => {
+    const files = Array.from({ length: 12 }, (_, index): [string, BrowserFileHandle] => {
+      const name = `alpha-${String(index).padStart(2, "0")}.csv`;
+      return [name, new MockFileHandle(name, "A\n1")];
+    });
+    const root = new MockDirectoryHandle("Tables", files);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "alpha-00.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "alpha-00.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+
+    const input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    const picker = screen.getByRole("listbox", { name: "快速打开文件结果" });
+    await waitFor(() =>
+      expect(within(picker).getByRole("option", { name: /alpha-00\.csv/ })).toHaveAttribute("aria-selected", "true")
+    );
+
+    fireEvent.keyDown(input, { key: "PageDown" });
+    await waitFor(() =>
+      expect(within(picker).getByRole("option", { name: /alpha-08\.csv/ })).toHaveAttribute("aria-selected", "true")
+    );
+
+    fireEvent.change(input, { target: { value: "alpha" } });
+
+    await waitFor(() =>
+      expect(within(picker).getByRole("option", { name: /alpha-00\.csv/ })).toHaveAttribute("aria-selected", "true")
+    );
+    expect(within(picker).getByRole("option", { name: /alpha-08\.csv/ })).toHaveAttribute("aria-selected", "false");
+  });
+
   it("commits an active inline editor before Ctrl+P opens another table", async () => {
     const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
     const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");

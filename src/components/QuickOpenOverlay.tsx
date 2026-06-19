@@ -38,6 +38,14 @@ export function QuickOpenOverlay({
   }, []);
 
   useEffect(() => {
+    const list = listRef.current;
+    if (list) {
+      list.scrollTop = 0;
+      list.scrollLeft = 0;
+    }
+  }, [query]);
+
+  useEffect(() => {
     const selectedOption = selectedOptionRef.current;
     if (typeof selectedOption?.scrollIntoView !== "function") {
       return;
