@@ -46,6 +46,7 @@ const DEFAULT_ROW_HEIGHT = 28;
 const MIN_COL_WIDTH = 54;
 const OVERSCAN = 6;
 const DRAG_SELECTION_THRESHOLD_PX = 8;
+const FILTER_IGNORED_ROW_COUNT = 2;
 export const COMMIT_ACTIVE_EDIT_EVENT = "csv-editor:commit-active-edit";
 const TEXT_COLOR_PRESETS = ["#172026", "#b42318", "#0f766e", "#1d4ed8"];
 const BACKGROUND_COLOR_PRESETS = ["#ffffff", "#fff3bf", "#dff0ee", "#eaf3ff"];
@@ -152,6 +153,7 @@ type FilterMenuState = {
   top: number;
   search: string;
   draftSelectedValues: string[];
+  addSearchSelectionToFilter: boolean;
 };
 
 type FilterValueOption = {
@@ -209,6 +211,7 @@ export function GridEditor({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const keyProxyRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
+  const filterSelectAllRef = useRef<HTMLInputElement | null>(null);
   const viewportFrameRef = useRef<number | null>(null);
   const dragAnchorRef = useRef<DragSelectionState | null>(null);
   const composingInputRef = useRef(false);
@@ -259,10 +262,10 @@ export function GridEditor({
       return null;
     }
     const rows: number[] = [];
-    if (tab.data.length > 0) {
-      rows.push(0);
+    for (let row = 0; row < Math.min(FILTER_IGNORED_ROW_COUNT, tab.data.length); row += 1) {
+      rows.push(row);
     }
-    for (let row = 1; row < tab.data.length; row += 1) {
+    for (let row = FILTER_IGNORED_ROW_COUNT; row < tab.data.length; row += 1) {
       if (rowPassesColumnFilters(tab.data, row, columnFilterEntries)) {
         rows.push(row);
       }
@@ -1347,7 +1350,8 @@ export function GridEditor({
       left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)),
       top: rect.bottom + 5,
       search: "",
-      draftSelectedValues: hasColumnFilter ? [...tab.columnFilters[col]] : allValues
+      draftSelectedValues: hasColumnFilter ? [...tab.columnFilters[col]] : allValues,
+      addSearchSelectionToFilter: false
     });
   };
 
@@ -1366,16 +1370,36 @@ export function GridEditor({
     () => new Set(filterMenu?.draftSelectedValues ?? []),
     [filterMenu?.draftSelectedValues]
   );
+  const filterMenuSearchQuery = filterMenu?.search.trim().toLowerCase() ?? "";
+  const filterMenuHasSearch = filterMenuSearchQuery.length > 0;
+  const filterMenuHasColumnFilter = Boolean(
+    filterMenu && Object.prototype.hasOwnProperty.call(tab.columnFilters, filterMenu.col)
+  );
   const displayedFilterMenuOptions = useMemo(() => {
-    const query = filterMenu?.search.trim().toLowerCase() ?? "";
-    if (!query) {
+    if (!filterMenuSearchQuery) {
       return filterMenuOptions;
     }
-    return filterMenuOptions.filter((option) => option.label.toLowerCase().includes(query));
-  }, [filterMenu?.search, filterMenuOptions]);
+    return filterMenuOptions.filter((option) => option.label.toLowerCase().includes(filterMenuSearchQuery));
+  }, [filterMenuOptions, filterMenuSearchQuery]);
+  const displayedFilterMenuValues = useMemo(
+    () => displayedFilterMenuOptions.map((option) => option.value),
+    [displayedFilterMenuOptions]
+  );
+  const selectedDisplayedFilterValueCount = displayedFilterMenuValues.filter((value) =>
+    filterMenuSelectedSet.has(value)
+  ).length;
   const allDisplayedFilterValuesSelected =
-    displayedFilterMenuOptions.length > 0 &&
-    displayedFilterMenuOptions.every((option) => filterMenuSelectedSet.has(option.value));
+    displayedFilterMenuValues.length > 0 && selectedDisplayedFilterValueCount === displayedFilterMenuValues.length;
+  const someDisplayedFilterValuesSelected = selectedDisplayedFilterValueCount > 0;
+  const selectAllFilterLabel = filterMenuHasSearch ? "全选搜索结果" : "全选";
+  const canApplyFilterMenu = !filterMenuHasSearch || displayedFilterMenuValues.length > 0;
+
+  useEffect(() => {
+    if (filterSelectAllRef.current) {
+      filterSelectAllRef.current.indeterminate =
+        someDisplayedFilterValuesSelected && !allDisplayedFilterValuesSelected;
+    }
+  }, [allDisplayedFilterValuesSelected, someDisplayedFilterValuesSelected]);
 
   const setFilterMenuDraftValues = (updater: (current: Set<string>) => Set<string>) => {
     setFilterMenu((current) => {
@@ -1390,15 +1414,14 @@ export function GridEditor({
   };
 
   const toggleDisplayedFilterValues = () => {
-    const displayedValues = displayedFilterMenuOptions.map((option) => option.value);
     setFilterMenuDraftValues((current) => {
-      if (displayedValues.length === 0) {
+      if (displayedFilterMenuValues.length === 0) {
         return current;
       }
-      if (displayedValues.every((value) => current.has(value))) {
-        displayedValues.forEach((value) => current.delete(value));
+      if (displayedFilterMenuValues.every((value) => current.has(value))) {
+        displayedFilterMenuValues.forEach((value) => current.delete(value));
       } else {
-        displayedValues.forEach((value) => current.add(value));
+        displayedFilterMenuValues.forEach((value) => current.add(value));
       }
       return current;
     });
@@ -1419,12 +1442,20 @@ export function GridEditor({
     if (!filterMenu) {
       return;
     }
-    const allowedValues = new Set(filterMenuAllValues);
-    const selectedValues = [...new Set(filterMenu.draftSelectedValues)].filter((value) => allowedValues.has(value));
-    const selectedSet = new Set(selectedValues);
+    const draftSelectedSet = new Set(filterMenu.draftSelectedValues);
+    const displayedValueSet = new Set(displayedFilterMenuValues);
+    const scopedSelectedSet = filterMenuHasSearch
+      ? new Set([...draftSelectedSet].filter((value) => displayedValueSet.has(value)))
+      : draftSelectedSet;
+    const finalSelectedSet =
+      filterMenuHasSearch && filterMenu.addSearchSelectionToFilter && filterMenuHasColumnFilter
+        ? new Set([...(tab.columnFilters[filterMenu.col] ?? []), ...scopedSelectedSet])
+        : scopedSelectedSet;
+    const selectedValues = filterMenuAllValues.filter((value) => finalSelectedSet.has(value));
+    const selectedValueSet = new Set(selectedValues);
     const selectedAllValues =
       filterMenuAllValues.length === selectedValues.length &&
-      filterMenuAllValues.every((value) => selectedSet.has(value));
+      filterMenuAllValues.every((value) => selectedValueSet.has(value));
     onSetColumnFilter(filterMenu.col, selectedAllValues ? null : selectedValues);
     setFilterMenu(null);
   };
@@ -1916,22 +1947,42 @@ export function GridEditor({
             <Search size={14} />
             <input
               value={filterMenu.search}
-              onChange={(event) => setFilterMenu((current) => (current ? { ...current, search: event.target.value } : current))}
+              onChange={(event) =>
+                setFilterMenu((current) =>
+                  current ? { ...current, search: event.target.value, addSearchSelectionToFilter: false } : current
+                )
+              }
               placeholder="搜索值"
               aria-label="搜索筛选值"
             />
           </label>
           <label className="column-filter-option select-all">
             <input
+              ref={filterSelectAllRef}
               type="checkbox"
               checked={allDisplayedFilterValuesSelected}
               disabled={displayedFilterMenuOptions.length === 0}
               onChange={toggleDisplayedFilterValues}
-              aria-label="全选当前筛选值"
+              aria-label={selectAllFilterLabel}
             />
-            <span>全选</span>
+            <span>{selectAllFilterLabel}</span>
             <span className="column-filter-count">{displayedFilterMenuOptions.length}</span>
           </label>
+          {filterMenuHasSearch && filterMenuHasColumnFilter ? (
+            <label className="column-filter-option add-current-selection">
+              <input
+                type="checkbox"
+                checked={filterMenu.addSearchSelectionToFilter}
+                onChange={(event) =>
+                  setFilterMenu((current) =>
+                    current ? { ...current, addSearchSelectionToFilter: event.target.checked } : current
+                  )
+                }
+                aria-label="添加当前选择到筛选"
+              />
+              <span>添加当前选择到筛选</span>
+            </label>
+          ) : null}
           <div className="column-filter-values">
             {displayedFilterMenuOptions.length > 0 ? (
               displayedFilterMenuOptions.map((option) => (
@@ -1973,7 +2024,7 @@ export function GridEditor({
             >
               全部清除
             </button>
-            <button className="tool-button primary-filter-action" onClick={applyFilterMenu}>
+            <button className="tool-button primary-filter-action" onClick={applyFilterMenu} disabled={!canApplyFilterMenu}>
               确定
             </button>
           </div>
@@ -2358,7 +2409,7 @@ function getColumnFilterOptions(
   ignoredCol: number
 ): FilterValueOption[] {
   const counts = new Map<string, number>();
-  for (let row = 1; row < data.length; row += 1) {
+  for (let row = FILTER_IGNORED_ROW_COUNT; row < data.length; row += 1) {
     if (!rowPassesColumnFilters(data, row, filters, ignoredCol)) {
       continue;
     }
@@ -2378,7 +2429,7 @@ function rowPassesColumnFilters(
   filters: Array<{ col: number; values: Set<string> }>,
   ignoredCol?: number
 ): boolean {
-  if (row === 0) {
+  if (row < FILTER_IGNORED_ROW_COUNT) {
     return true;
   }
   for (const filter of filters) {

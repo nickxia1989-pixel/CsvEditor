@@ -81,6 +81,7 @@ async function main() {
         hasUtf8Bom,
         favorites: result.favorites,
         headerDrag: result.headerDrag,
+        filter: result.filter,
         search: result.search,
         quickOpen: result.quickOpen,
         windowControls: result.windowControls,

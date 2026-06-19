@@ -482,9 +482,10 @@ describe("GridEditor toolbar", () => {
     const props = renderGrid(createTab({
       data: [
         ["ID", "Type"],
-        ["1", "Zulu"],
-        ["2", "Alpha"],
-        ["3", "Zulu"]
+        ["1", "Ignored"],
+        ["2", "Zulu"],
+        ["3", "Alpha"],
+        ["4", "Zulu"]
       ]
     }));
 
@@ -501,10 +502,93 @@ describe("GridEditor toolbar", () => {
     expect(props.onSetColumnFilter).toHaveBeenCalledWith(1, ["Zulu"]);
   });
 
+  it("applies active column-filter search results instead of preserving hidden selected values", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Training"],
+        ["2", "Forest"],
+        ["3", "Training"],
+        ["4", "Boss"]
+      ]
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选 B 列" }));
+    fireEvent.change(screen.getByLabelText("搜索筛选值"), { target: { value: "train" } });
+    expect(screen.getByLabelText("全选搜索结果")).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(props.onSetColumnFilter).toHaveBeenCalledWith(1, ["Training"]);
+  });
+
+  it("replaces an existing column filter with checked search results by default", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Ignored"],
+        ["2", "Zulu"],
+        ["3", "Alpha"],
+        ["4", "Beta"],
+        ["5", "Alpha"]
+      ],
+      columnFilters: { 1: ["Zulu"] }
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选 B 列" }));
+    fireEvent.change(screen.getByLabelText("搜索筛选值"), { target: { value: "Alpha" } });
+    expect(screen.getByLabelText("筛选值 Alpha")).not.toBeChecked();
+
+    fireEvent.click(screen.getByLabelText("全选搜索结果"));
+    fireEvent.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(props.onSetColumnFilter).toHaveBeenCalledWith(1, ["Alpha"]);
+  });
+
+  it("can add checked search results to the current column filter", () => {
+    const props = renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Ignored"],
+        ["2", "Zulu"],
+        ["3", "Alpha"],
+        ["4", "Beta"],
+        ["5", "Alpha"]
+      ],
+      columnFilters: { 1: ["Zulu"] }
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选 B 列" }));
+    fireEvent.change(screen.getByLabelText("搜索筛选值"), { target: { value: "Alpha" } });
+    fireEvent.click(screen.getByLabelText("全选搜索结果"));
+    fireEvent.click(screen.getByLabelText("添加当前选择到筛选"));
+    fireEvent.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(props.onSetColumnFilter).toHaveBeenCalledWith(1, ["Zulu", "Alpha"]);
+  });
+
+  it("shows a partial select-all state when only some displayed filter values are checked", () => {
+    renderGrid(createTab({
+      data: [
+        ["ID", "Type"],
+        ["1", "Zulu"],
+        ["2", "Alpha"],
+        ["3", "Beta"]
+      ],
+      columnFilters: { 1: ["Alpha"] }
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选 B 列" }));
+
+    const selectAll = screen.getByLabelText("全选") as HTMLInputElement;
+    expect(selectAll.checked).toBe(false);
+    expect(selectAll.indeterminate).toBe(true);
+  });
+
   it("hides rows that fail an active column filter while keeping original row numbers", () => {
     const data = [
       ["ID", "Type"],
-      ["1", "Beast"],
+      ["1", "Always Visible"],
       ["2", "Plant"],
       ["3", "Beast"]
     ];

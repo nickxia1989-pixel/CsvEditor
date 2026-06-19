@@ -511,7 +511,7 @@ async function runSmokeTestWhenLoaded(window) {
         }
         const opened = await api.readFile(target.path);
         const initialText = new TextDecoder("utf-8", { ignoreBOM: false }).decode(opened.data);
-        await api.writeFile(target.path, new TextEncoder().encode("\\uFEFFA,B\\r\\n3,4\\r\\n"));
+        await api.writeFile(target.path, new TextEncoder().encode("\\uFEFFA,B\\r\\n3,4\\r\\n5,other\\r\\n6,4\\r\\n"));
         const saved = await api.readFile(target.path);
         const savedText = new TextDecoder("utf-8", { ignoreBOM: false }).decode(saved.data);
         const pickButton = findButton("选择目录");
@@ -603,7 +603,7 @@ async function runSmokeTestWhenLoaded(window) {
         }
         clickElement(filterButton);
         await waitFor(() => document.querySelector(".column-filter-popover"), "filter popover missing");
-        const selectAllFilterInput = document.querySelector("input[aria-label='全选当前筛选值']");
+        const selectAllFilterInput = document.querySelector("input[aria-label='全选']");
         if (!selectAllFilterInput) {
           throw new Error("filter select-all input missing");
         }
@@ -617,9 +617,11 @@ async function runSmokeTestWhenLoaded(window) {
         clickElement(applyFilterButton);
         await waitFor(
           () =>
-            !document.querySelector(".grid-cell[aria-label='A2']") &&
-            document.querySelector(".grid-status")?.textContent?.includes("筛选显示 0 行"),
-          "filter did not hide data row"
+            document.querySelector(".grid-cell[aria-label='A2']") &&
+            !document.querySelector(".grid-cell[aria-label='A3']") &&
+            !document.querySelector(".grid-cell[aria-label='A4']") &&
+            document.querySelector(".grid-status")?.textContent?.includes("筛选显示 1 行"),
+          "filter did not keep only ignored data row"
         );
         clickElement(filterButton);
         await waitFor(() => document.querySelector(".column-filter-popover"), "filter popover missing after active filter");
@@ -633,6 +635,55 @@ async function runSmokeTestWhenLoaded(window) {
         await waitFor(
           () => document.querySelector(".grid-cell[aria-label='A2']") && !document.querySelector(".column-filter-popover"),
           "filter did not restore data row"
+        );
+        clickElement(filterButton);
+        await waitFor(() => document.querySelector(".column-filter-popover"), "filter popover missing before search filter");
+        const filterSearchInput = document.querySelector("input[aria-label='搜索筛选值']");
+        if (!filterSearchInput) {
+          throw new Error("filter search input missing");
+        }
+        setInputValue(filterSearchInput, "4");
+        await waitFor(
+          () => document.querySelector("input[aria-label='全选搜索结果']"),
+          "filter search select-all label missing"
+        );
+        const searchApplyFilterButton = Array.from(document.querySelectorAll(".column-filter-actions button")).find(
+          (button) => button.textContent?.trim() === "确定"
+        );
+        if (!searchApplyFilterButton || searchApplyFilterButton.disabled) {
+          throw new Error("filter search apply button missing or disabled");
+        }
+        clickElement(searchApplyFilterButton);
+        await waitFor(
+          () =>
+            document.querySelector(".grid-cell[aria-label='A2']") &&
+            !document.querySelector(".grid-cell[aria-label='A3']") &&
+            document.querySelector(".grid-cell[aria-label='A4']") &&
+            document.querySelector(".grid-status")?.textContent?.includes("筛选显示 2 行"),
+          "filter search did not keep only matching rows"
+        );
+        const filterSearchStatus = document.querySelector(".grid-status")?.textContent ?? "";
+        const filterSearchMatchedOnly = Boolean(
+          document.querySelector(".grid-cell[aria-label='A2']") &&
+            !document.querySelector(".grid-cell[aria-label='A3']") &&
+            document.querySelector(".grid-cell[aria-label='A4']")
+        );
+        clickElement(filterButton);
+        await waitFor(() => document.querySelector(".column-filter-popover"), "filter popover missing after search filter");
+        const clearSearchFilterButton = Array.from(document.querySelectorAll(".column-filter-actions button")).find(
+          (button) => button.textContent?.trim() === "清除筛选"
+        );
+        if (!clearSearchFilterButton || clearSearchFilterButton.disabled) {
+          throw new Error("search clear filter button missing or disabled");
+        }
+        clickElement(clearSearchFilterButton);
+        await waitFor(
+          () =>
+            document.querySelector(".grid-cell[aria-label='A2']") &&
+            document.querySelector(".grid-cell[aria-label='A3']") &&
+            document.querySelector(".grid-cell[aria-label='A4']") &&
+            !document.querySelector(".column-filter-popover"),
+          "search filter did not restore all data rows"
         );
         const restoredCellA1 = document.querySelector(".grid-cell[aria-label='A1']");
         const restoredCellB2 = document.querySelector(".grid-cell[aria-label='B2']");
@@ -837,6 +888,10 @@ async function runSmokeTestWhenLoaded(window) {
             resultJumped: findResultJumped,
             panelClosed: !document.querySelector(".find-side-panel")
           },
+          filter: {
+            searchStatus: filterSearchStatus,
+            searchMatchedOnly: filterSearchMatchedOnly
+          },
           quickOpen: {
             hoverDidNotSelect: quickOpenHoverDidNotSelect,
             opened: quickOpenOpened,
@@ -924,6 +979,9 @@ async function runSmokeTestWhenLoaded(window) {
       !result.search.panelClosed
     ) {
       throw new Error(`桌面查找侧栏烟测不正确: ${JSON.stringify(result.search)}`);
+    }
+    if (!result.filter?.searchMatchedOnly || !result.filter.searchStatus.includes("筛选显示 2 行")) {
+      throw new Error(`桌面搜索筛选烟测不正确: ${JSON.stringify(result.filter)}`);
     }
     if (!result.quickOpen?.hoverDidNotSelect || !result.quickOpen.opened || !result.quickOpen.closed) {
       throw new Error(`桌面快速打开烟测不正确: ${JSON.stringify(result.quickOpen)}`);
