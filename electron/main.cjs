@@ -8,6 +8,12 @@ const allowedRoots = new Set();
 
 let mainWindow = null;
 
+if (process.env.CSV_EDITOR_SMOKE_TEST === "1" && process.env.CSV_EDITOR_SMOKE_DIR) {
+  const smokeUserDataPath = path.join(path.resolve(process.env.CSV_EDITOR_SMOKE_DIR), ".smoke-user-data");
+  fsSync.mkdirSync(smokeUserDataPath, { recursive: true });
+  app.setPath("userData", smokeUserDataPath);
+}
+
 function addAllowedRoot(directoryPath) {
   allowedRoots.add(path.resolve(directoryPath));
 }
@@ -400,7 +406,7 @@ async function runSmokeTestWhenLoaded(window) {
         const waitFor = async (predicate, label, timeoutMs = 10000) => {
           const deadline = Date.now() + timeoutMs;
           while (Date.now() < deadline) {
-            if (predicate()) {
+            if (await predicate()) {
               return;
             }
             await new Promise((resolve) => setTimeout(resolve, 50));
@@ -521,15 +527,27 @@ async function runSmokeTestWhenLoaded(window) {
           if (!addFavoriteButton || addFavoriteButton.disabled) {
             throw new Error("add favorite button missing or disabled");
           }
-          clickElement(addFavoriteButton);
+          addFavoriteButton.click();
           await waitFor(
             () => Array.from(document.querySelectorAll(".favorite-row")).some((row) => row.textContent?.includes("smoke.csv")),
             "favorite row missing"
           );
           favoriteListed = Array.from(document.querySelectorAll(".favorite-row")).some((row) => row.textContent?.includes("smoke.csv"));
-          const savedFavorites = api.getFavorites ? await api.getFavorites() : [];
-          favoritePersisted = savedFavorites.some((favorite) => favorite.path === target.path && favorite.name === "smoke.csv");
-          favoriteButtonDisabledAfterAdd = addFavoriteButton.disabled;
+          let lastSavedFavorites = [];
+          try {
+            await waitFor(
+              async () => {
+                lastSavedFavorites = api.getFavorites ? await api.getFavorites() : [];
+                favoritePersisted = lastSavedFavorites.some((favorite) => favorite.path === target.path && favorite.name === "smoke.csv");
+                return favoritePersisted;
+              },
+              "favorite did not persist"
+            );
+          } catch (error) {
+            throw new Error((error instanceof Error ? error.message : String(error)) + "; saved=" + JSON.stringify(lastSavedFavorites));
+          }
+          await waitFor(() => findButton("加入收藏")?.disabled, "add favorite button did not become disabled");
+          favoriteButtonDisabledAfterAdd = Boolean(findButton("加入收藏")?.disabled);
           const favoriteRow = Array.from(document.querySelectorAll(".favorite-row")).find((row) => row.textContent?.includes("smoke.csv"));
           clickElement(favoriteRow);
           await waitFor(

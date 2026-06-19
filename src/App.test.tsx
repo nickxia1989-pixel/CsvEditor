@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { BrowserDirectoryHandle, BrowserFileHandle, CsvDesktopApi } from "./lib/fileRefs";
+import type { CsvFavoriteFile } from "./types";
 
 class MockFileHandle implements BrowserFileHandle {
   kind = "file" as const;
@@ -138,13 +139,17 @@ describe("App local directory flow", () => {
       value: vi.fn(async () => root)
     });
 
-    render(<App />);
+    const { container } = render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
     fireEvent.click(await screen.findByRole("button", { name: "favorite.csv" }));
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
 
-    fireEvent.click(screen.getByRole("button", { name: "加入收藏" }));
+    const favoriteButton = screen.getByRole("button", { name: "加入收藏" });
+    expect(container.querySelector(".topbar")).not.toContainElement(favoriteButton);
+    expect(container.querySelector(".grid-tools")).toContainElement(favoriteButton);
+    fireEvent.click(favoriteButton);
+    await waitFor(() => expect(favoriteButton).toBeDisabled());
 
     const favoriteSection = screen.getByLabelText("收藏表格");
     expect(within(favoriteSection).getByRole("button", { name: "favorite.csv" })).toHaveClass("active");
@@ -157,6 +162,62 @@ describe("App local directory flow", () => {
         }
       ]);
     });
+  });
+
+  it("keeps a desktop favorite added before persisted favorites finish loading", async () => {
+    let resolveFavorites!: (favorites: CsvFavoriteFile[]) => void;
+    const api: CsvDesktopApi = {
+      pickDirectory: vi.fn(async () => ({
+        source: "desktop" as const,
+        kind: "directory" as const,
+        name: "Tables",
+        path: "C:\\Tables"
+      })),
+      listDirectory: vi.fn(async () => [{ kind: "file" as const, name: "early.csv", path: "C:\\Tables\\early.csv" }]),
+      readFile: vi.fn(async () => ({
+        data: new TextEncoder().encode("ID,Name\n1,Alpha"),
+        version: { lastModified: 1, size: 15 }
+      })),
+      writeFile: vi.fn(),
+      getVersion: vi.fn(),
+      getFavorites: vi.fn(
+        () =>
+          new Promise<CsvFavoriteFile[]>((resolve) => {
+            resolveFavorites = resolve;
+          })
+      ),
+      setFavorites: vi.fn(async (favorites) => favorites)
+    };
+    Object.defineProperty(window, "csvDesktop", {
+      configurable: true,
+      value: api
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "early.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID"));
+
+    const favoriteButton = screen.getByRole("button", { name: "加入收藏" });
+    fireEvent.click(favoriteButton);
+    await waitFor(() => expect(favoriteButton).toBeDisabled());
+
+    const favoriteSection = screen.getByLabelText("收藏表格");
+    expect(within(favoriteSection).getByRole("button", { name: "early.csv" })).toHaveClass("active");
+
+    resolveFavorites([]);
+
+    await waitFor(() => expect(within(favoriteSection).getByRole("button", { name: "early.csv" })).toHaveClass("active"));
+    await waitFor(() =>
+      expect(api.setFavorites).toHaveBeenCalledWith([
+        {
+          name: "early.csv",
+          path: "C:\\Tables\\early.csv",
+          source: "local"
+        }
+      ])
+    );
   });
 
   it("opens a persisted desktop favorite without picking a directory again", async () => {

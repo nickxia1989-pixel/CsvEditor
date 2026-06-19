@@ -76,6 +76,9 @@ function createGridProps(tab = createTab()) {
     onSetFindSnapshot: vi.fn(),
     onSetStatus: vi.fn(),
     onEditDraftDirtyChange: vi.fn(),
+    canAddActiveFavorite: true,
+    isActiveFavorite: false,
+    onAddActiveFavorite: vi.fn(),
     scrollPosition: { scrollTop: 0, scrollLeft: 0 },
     onScrollPositionChange: vi.fn(),
     onReplaceCurrent: vi.fn(),
@@ -273,6 +276,16 @@ describe("GridEditor editing workflow", () => {
     expect(formulaBar).toBeInTheDocument();
     expect(tools!.compareDocumentPosition(formulaBar!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(detailsEditor.tagName).toBe("TEXTAREA");
+    expect(detailsEditor).toHaveAttribute("rows", "1");
+    expect(tools).toContainElement(screen.getByRole("button", { name: "加入收藏" }));
+  });
+
+  it("forwards the favorite action from the tool area", () => {
+    const props = renderGrid();
+
+    fireEvent.click(screen.getByRole("button", { name: "加入收藏" }));
+
+    expect(props.onAddActiveFavorite).toHaveBeenCalledTimes(1);
   });
 
   it("clears the copied highlight when a structural edit starts", async () => {

@@ -13,6 +13,7 @@ import {
   Redo2,
   Rows3,
   Search,
+  Star,
   Type,
   Undo2,
   Unlock,
@@ -76,6 +77,9 @@ type GridEditorProps = {
   onSetFindSnapshot(snapshot: CsvFindSnapshot | null): void;
   onSetStatus(status: string): void;
   onEditDraftDirtyChange(dirty: boolean): void;
+  canAddActiveFavorite: boolean;
+  isActiveFavorite: boolean;
+  onAddActiveFavorite(): void;
   scrollPosition: GridScrollPosition;
   onScrollPositionChange(tabId: string, position: GridScrollPosition): void;
   onReplaceCurrent(query: string): void;
@@ -180,6 +184,9 @@ export function GridEditor({
   onSetFindSnapshot,
   onSetStatus,
   onEditDraftDirtyChange,
+  canAddActiveFavorite,
+  isActiveFavorite,
+  onAddActiveFavorite,
   scrollPosition,
   onScrollPositionChange,
   onReplaceCurrent,
@@ -1865,12 +1872,22 @@ export function GridEditor({
             {tab.autoRefresh ? <Play size={15} /> : <Pause size={15} />}
             {tab.autoRefresh ? "自动热刷" : "热刷暂停"}
           </button>
+          <button
+            className={`tool-button favorite-active-button ${isActiveFavorite ? "active" : ""}`}
+            onClick={() => runAfterCommittingEdit(onAddActiveFavorite)}
+            disabled={!canAddActiveFavorite || isActiveFavorite}
+            title={isActiveFavorite ? "当前文档已在收藏中" : "将当前文档加入收藏"}
+          >
+            <Star size={15} fill={isActiveFavorite ? "currentColor" : "none"} />
+            加入收藏
+          </button>
         </div>
       </div>
 
       <div className="formula-bar">
         <span className="cell-name">{selectedLabel}</span>
         <textarea
+          rows={1}
           value={selectedValue}
           onChange={(event) => {
             clearCopiedState();

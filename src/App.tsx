@@ -14,7 +14,6 @@ import {
   Minus,
   RefreshCw,
   RotateCcw,
-  Star,
   X
 } from "lucide-react";
 import { DirectoryPane } from "./components/DirectoryPane";
@@ -151,6 +150,7 @@ export function App() {
   const tabSwitcherRef = useRef<TabSwitcherSession | null>(null);
   const restoringWorkspaceRef = useRef(false);
   const workspacePersistSnapshotRef = useRef("");
+  const favoritePersistSnapshotRef = useRef("");
   const tabScrollPositionsRef = useRef<Record<string, GridScrollPosition>>({});
   const pollBusyRef = useRef(false);
   const openingPathsRef = useRef(new Set<string>());
@@ -240,7 +240,11 @@ export function App() {
     void loadFavoriteFiles()
       .then((favorites) => {
         if (!cancelled) {
-          setFavoriteFiles(favorites);
+          setFavoriteFiles((current) => {
+            const next = current.length === 0 ? favorites : mergeFavoriteFiles(current, favorites);
+            favoritePersistSnapshotRef.current = current.length === 0 ? serializeFavorites(next) : "";
+            return next;
+          });
           setFavoritesLoaded(true);
         }
       })
@@ -259,13 +263,22 @@ export function App() {
     if (!favoritesLoaded) {
       return;
     }
+    const snapshot = serializeFavorites(favoriteFiles);
+    if (snapshot === favoritePersistSnapshotRef.current) {
+      return;
+    }
+    favoritePersistSnapshotRef.current = snapshot;
     void saveFavoriteFiles(favoriteFiles)
       .then((savedFavorites) => {
+        favoritePersistSnapshotRef.current = serializeFavorites(savedFavorites);
         if (!favoritesEqual(favoriteFiles, savedFavorites)) {
           setFavoriteFiles(savedFavorites);
         }
       })
-      .catch((error) => notify("error", error instanceof Error ? error.message : String(error)));
+      .catch((error) => {
+        favoritePersistSnapshotRef.current = "";
+        notify("error", error instanceof Error ? error.message : String(error));
+      });
   }, [favoriteFiles, favoritesLoaded, notify]);
 
   const runAfterActiveEditCommit = useCallback((action: () => void) => {
@@ -637,7 +650,20 @@ export function App() {
       path: activeTab.path,
       source: activeTab.fileRef.source
     };
-    setFavoriteFiles((current) => [nextFavorite, ...current].slice(0, 60));
+    const nextFavorites = mergeFavoriteFiles([nextFavorite], favoriteFiles);
+    favoritePersistSnapshotRef.current = serializeFavorites(nextFavorites);
+    setFavoriteFiles(nextFavorites);
+    void saveFavoriteFiles(nextFavorites)
+      .then((savedFavorites) => {
+        favoritePersistSnapshotRef.current = serializeFavorites(savedFavorites);
+        if (!favoritesEqual(nextFavorites, savedFavorites)) {
+          setFavoriteFiles(savedFavorites);
+        }
+      })
+      .catch((error) => {
+        favoritePersistSnapshotRef.current = "";
+        notify("error", error instanceof Error ? error.message : String(error));
+      });
     notify("success", `已加入收藏 ${activeTab.name}`);
   }, [activeTab, favoriteFiles, notify]);
 
@@ -1135,15 +1161,6 @@ export function App() {
             onActivate={activateTabAfterEditCommit}
             onClose={closeTabAfterEditCommit}
           />
-          <button
-            className={`favorite-active-button ${activeFavorite ? "active" : ""}`}
-            onClick={handleAddActiveFavorite}
-            disabled={!activeTab || activeFavorite}
-            title={activeFavorite ? "当前文档已在收藏中" : "将当前文档加入收藏"}
-          >
-            <Star size={15} fill={activeFavorite ? "currentColor" : "none"} />
-            加入收藏
-          </button>
           {desktopWindowControlsAvailable ? (
             <div className="window-controls" aria-label="窗口控制">
               <button className="window-control" onClick={() => void minimizeDesktopWindow()} title="最小化" aria-label="最小化">
@@ -1421,6 +1438,9 @@ export function App() {
             onSetFindSnapshot={(findSnapshot: CsvFindSnapshot | null) => updateActiveTab((tab) => ({ ...tab, findSnapshot }))}
             onSetStatus={(status) => updateActiveTab((tab) => ({ ...tab, status }))}
             onEditDraftDirtyChange={setActiveEditDraftDirty}
+            canAddActiveFavorite={!activeFavorite}
+            isActiveFavorite={activeFavorite}
+            onAddActiveFavorite={handleAddActiveFavorite}
             onReplaceCurrent={(query) =>
               updateActiveTab((tab) => {
                 const normalizedQuery = query.trim();
@@ -2193,6 +2213,26 @@ function favoritesEqual(left: CsvFavoriteFile[], right: CsvFavoriteFile[]): bool
       favorite.path === right[index]?.path &&
       favorite.source === right[index]?.source
   );
+}
+
+function serializeFavorites(favorites: CsvFavoriteFile[]): string {
+  return JSON.stringify(favorites.map((favorite) => [favorite.name, favorite.path, favorite.source]));
+}
+
+function mergeFavoriteFiles(primary: CsvFavoriteFile[], secondary: CsvFavoriteFile[]): CsvFavoriteFile[] {
+  const merged: CsvFavoriteFile[] = [];
+  const seen = new Set<string>();
+  for (const favorite of [...primary, ...secondary]) {
+    if (seen.has(favorite.path)) {
+      continue;
+    }
+    seen.add(favorite.path);
+    merged.push(favorite);
+    if (merged.length >= 60) {
+      break;
+    }
+  }
+  return merged;
 }
 
 function clamp(value: number, min: number, max: number): number {
