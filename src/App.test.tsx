@@ -1400,6 +1400,84 @@ describe("App local directory flow", () => {
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("Ctrl P Draft"));
   });
 
+  it("shows two editable tables in left and right split panes", async () => {
+    const leftFile = new MockFileHandle("left.csv", "LeftHead,Name\nL1,Left");
+    const rightFile = new MockFileHandle("right.csv", "RightHead,Name\nR1,Right");
+    const root = new MockDirectoryHandle("Tables", [
+      ["left.csv", leftFile],
+      ["right.csv", rightFile]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "left.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "left.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "right.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "right.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.click(screen.getByRole("button", { name: "开启左右分栏" }));
+    const leftPane = screen.getByLabelText("左侧分栏");
+    const rightPane = screen.getByLabelText("右侧分栏");
+    const leftSelect = screen.getByRole("combobox", { name: "左侧分栏显示的表格" }) as HTMLSelectElement;
+    const rightSelect = screen.getByRole("combobox", { name: "右侧分栏显示的表格" }) as HTMLSelectElement;
+    const leftOption = within(leftSelect).getByRole("option", { name: "left.csv" }) as HTMLOptionElement;
+    const rightOption = within(rightSelect).getByRole("option", { name: "right.csv" }) as HTMLOptionElement;
+
+    fireEvent.change(leftSelect, { target: { value: leftOption.value } });
+    fireEvent.change(rightSelect, { target: { value: rightOption.value } });
+
+    await waitFor(() => {
+      expect(within(leftPane).getByLabelText("Selected cell value")).toHaveValue("LeftHead");
+      expect(within(rightPane).getByLabelText("Selected cell value")).toHaveValue("RightHead");
+    });
+
+    fireEvent.doubleClick(within(rightPane).getByRole("gridcell", { name: "A1" }));
+    const rightEditor = await waitFor(() => {
+      const editor = rightPane.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(editor).toBeInTheDocument();
+      return editor as HTMLInputElement;
+    });
+    fireEvent.change(rightEditor, { target: { value: "Right Edited" } });
+    fireEvent.blur(rightEditor);
+
+    await waitFor(() => {
+      expect(within(rightPane).getByLabelText("Selected cell value")).toHaveValue("Right Edited");
+      expect(within(leftPane).getByLabelText("Selected cell value")).toHaveValue("LeftHead");
+    });
+
+    fireEvent.pointerDown(rightPane);
+    await waitFor(() => expect(rightPane).toHaveClass("active"));
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    await waitFor(() => expect(within(rightPane).getByLabelText("查找与替换")).toBeInTheDocument());
+    expect(within(leftPane).queryByLabelText("查找与替换")).not.toBeInTheDocument();
+
+    const splitter = screen.getByRole("separator", { name: "调整左右分栏比例" });
+    const panes = container.querySelector(".workspace-panes") as HTMLElement;
+    Object.defineProperty(panes, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 500,
+        left: 0,
+        top: 0,
+        right: 1000,
+        bottom: 500,
+        toJSON: () => ({})
+      })
+    });
+    fireEvent.pointerDown(splitter, { button: 0, clientX: 500, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 650 });
+
+    await waitFor(() => expect(splitter).toHaveAttribute("aria-valuenow", "65"));
+  });
+
   it("does not move the selected cell when Ctrl+Tab is pressed with only one open table", async () => {
     const file = new MockFileHandle("single.csv", "A,B\n1,2");
     const root = new MockDirectoryHandle("Tables", [["single.csv", file]]);

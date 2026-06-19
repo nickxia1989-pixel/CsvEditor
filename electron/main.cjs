@@ -496,6 +496,15 @@ async function runSmokeTestWhenLoaded(window) {
           setter.call(element, value);
           element.dispatchEvent(new Event("input", { bubbles: true }));
         };
+        const setSelectValueByText = (element, text) => {
+          const option = Array.from(element.options).find((item) => item.textContent?.includes(text));
+          if (!option) {
+            throw new Error("select option missing: " + text);
+          }
+          const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+          setter.call(element, option.value);
+          element.dispatchEvent(new Event("change", { bubbles: true }));
+        };
         const toggleFindPanel = () => {
           window.dispatchEvent(new KeyboardEvent("keydown", {
             bubbles: true,
@@ -586,8 +595,6 @@ async function runSmokeTestWhenLoaded(window) {
         const detailEditor = document.querySelector(".formula-bar textarea");
         const toolsRect = tools?.getBoundingClientRect();
         const formulaRect = formulaBar?.getBoundingClientRect();
-        const detailStyle = detailEditor ? getComputedStyle(detailEditor) : null;
-        const detailSpellcheckDisabled = detailEditor ? detailEditor.spellcheck === false : false;
         const detailHeightBefore = detailEditor ? Math.round(detailEditor.getBoundingClientRect().height) : 0;
         if (detailEditor) {
           detailEditor.style.height = "118px";
@@ -797,6 +804,136 @@ async function runSmokeTestWhenLoaded(window) {
           (tab) => tab.getAttribute("aria-selected") === "true" && tab.textContent?.includes("smoke-tab-07.csv")
         );
         const quickOpenClosed = !document.querySelector(".quick-open-panel");
+        const longFileRow = Array.from(document.querySelectorAll(".tree-row.file")).find((row) =>
+          row.textContent?.includes("smoke-long.csv")
+        );
+        if (!longFileRow) {
+          throw new Error("smoke-long.csv row missing");
+        }
+        clickElement(longFileRow);
+        await waitFor(
+          () => Array.from(document.querySelectorAll("[role='tab']")).some((tab) => tab.textContent?.includes("smoke-long.csv")),
+          "long smoke tab not opened"
+        );
+        const splitToggleButton = document.querySelector("button[aria-label='开启左右分栏']");
+        if (!splitToggleButton) {
+          throw new Error("split view toggle missing");
+        }
+        clickElement(splitToggleButton);
+        await waitFor(() => document.querySelectorAll(".workspace-pane").length === 2, "split panes did not open");
+        const leftPane = document.querySelector("[aria-label='左侧分栏']");
+        const rightPane = document.querySelector("[aria-label='右侧分栏']");
+        const leftPaneSelect = document.querySelector("select[aria-label='左侧分栏显示的表格']");
+        const rightPaneSelect = document.querySelector("select[aria-label='右侧分栏显示的表格']");
+        if (!leftPane || !rightPane || !leftPaneSelect || !rightPaneSelect) {
+          throw new Error("split pane controls missing");
+        }
+        setSelectValueByText(leftPaneSelect, "smoke.csv");
+        setSelectValueByText(rightPaneSelect, "smoke-long.csv");
+        await waitFor(
+          () => {
+            const leftGridText = leftPane.querySelector(".grid-viewport")?.textContent ?? leftPane.textContent ?? "";
+            const rightGridText = rightPane.querySelector(".grid-viewport")?.textContent ?? rightPane.textContent ?? "";
+            return (
+              leftPaneSelect.selectedOptions[0]?.textContent?.includes("smoke.csv") &&
+              rightPaneSelect.selectedOptions[0]?.textContent?.includes("smoke-long.csv") &&
+              leftGridText.includes("other") &&
+              rightGridText.includes("LONG_R1_C1") &&
+              rightGridText.includes("LONG_R2_C1")
+            );
+          },
+          "split pane selections did not render both grids"
+        );
+        const rightViewport = rightPane.querySelector(".grid-viewport");
+        if (!rightViewport) {
+          throw new Error("split scroll viewport missing");
+        }
+        const splitScrollableBefore = {
+          vertical: rightViewport.scrollHeight > rightViewport.clientHeight + 20,
+          horizontal: rightViewport.scrollWidth > rightViewport.clientWidth + 20,
+          clientHeight: rightViewport.clientHeight,
+          scrollHeight: rightViewport.scrollHeight,
+          clientWidth: rightViewport.clientWidth,
+          scrollWidth: rightViewport.scrollWidth
+        };
+        rightViewport.scrollTop = 420;
+        rightViewport.scrollLeft = 360;
+        rightViewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+        await waitFor(
+          () => rightViewport.scrollTop > 0 && rightViewport.scrollLeft > 0,
+          "split viewport did not accept scroll offsets"
+        );
+        const splitScrollableAfter = {
+          scrollTop: Math.round(rightViewport.scrollTop),
+          scrollLeft: Math.round(rightViewport.scrollLeft)
+        };
+        clickElement(rightPane.querySelector(".pane-activation"));
+        await waitFor(() => rightPane.classList.contains("active"), "right split pane did not become active");
+        toggleFindPanel();
+        await waitFor(
+          () => rightPane.querySelector(".find-side-panel") && !leftPane.querySelector(".find-side-panel"),
+          "split find shortcut was not scoped to active pane"
+        );
+        const splitSeparator = document.querySelector("[aria-label='调整左右分栏比例']");
+        if (!splitSeparator) {
+          throw new Error("split resize separator missing");
+        }
+        const splitValueBefore = Number(splitSeparator.getAttribute("aria-valuenow") ?? "0");
+        const splitCenter = elementCenter(splitSeparator);
+        pointerDownElement(splitSeparator, splitCenter);
+        const EventClass = window.PointerEvent || window.MouseEvent;
+        window.dispatchEvent(new EventClass("pointermove", {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          clientX: splitCenter.clientX + 140,
+          clientY: splitCenter.clientY
+        }));
+        await pointerUpWindow(splitCenter);
+        await waitFor(
+          () => Number(splitSeparator.getAttribute("aria-valuenow") ?? "0") !== splitValueBefore,
+          "split separator drag did not change ratio"
+        );
+        const splitVisual = {
+          paneCount: document.querySelectorAll(".workspace-pane").length,
+          leftSelected: leftPaneSelect.selectedOptions[0]?.textContent ?? "",
+          rightSelected: rightPaneSelect.selectedOptions[0]?.textContent ?? "",
+          leftRendered: leftPane.textContent?.includes("other") ?? false,
+          rightRendered: rightPane.textContent?.includes("LONG_R") ?? false,
+          scrollable: {
+            before: splitScrollableBefore,
+            after: splitScrollableAfter
+          },
+          rightActive: rightPane.classList.contains("active"),
+          findScopedToRight: Boolean(rightPane.querySelector(".find-side-panel")) && !leftPane.querySelector(".find-side-panel"),
+          ratioChanged: Number(splitSeparator.getAttribute("aria-valuenow") ?? "0") !== splitValueBefore,
+          leftRect: rectSummary(leftPane),
+          rightRect: rectSummary(rightPane)
+        };
+        toggleFindPanel();
+        await waitFor(() => !document.querySelector(".find-side-panel"), "split find side panel did not close");
+        const closeSplitButton = document.querySelector("button[aria-label='关闭左右分栏']");
+        if (!closeSplitButton) {
+          throw new Error("split close button missing");
+        }
+        clickElement(closeSplitButton);
+        await waitFor(
+          () =>
+            document.querySelectorAll(".workspace-pane").length === 0 &&
+            document.querySelector("button[aria-label='开启左右分栏']"),
+          "split view did not close"
+        );
+        const restoredQuickOpenTab = Array.from(document.querySelectorAll("[role='tab']")).find((tab) =>
+          tab.textContent?.includes("smoke-tab-07.csv")
+        );
+        if (!restoredQuickOpenTab) {
+          throw new Error("quick opened tab missing after split test");
+        }
+        clickElement(restoredQuickOpenTab);
+        await waitFor(
+          () => restoredQuickOpenTab.getAttribute("aria-selected") === "true",
+          "quick opened tab was not restored after split test"
+        );
         const selectedTab = Array.from(document.querySelectorAll("[role='tab']")).find(
           (tab) => tab.getAttribute("aria-selected") === "true"
         );
@@ -860,7 +997,15 @@ async function runSmokeTestWhenLoaded(window) {
           key: "Escape"
         }));
         await waitFor(() => !document.querySelector(".cell-editor"), "inline editor did not close");
-        setTextAreaValue(detailEditor, "多行\\n详情\\n编辑");
+        const activeDetailEditor = document.querySelector(".formula-bar textarea");
+        if (!activeDetailEditor) {
+          throw new Error("active detail textarea missing");
+        }
+        const activeDetailStyle = getComputedStyle(activeDetailEditor);
+        const activeDetailEditorTag = activeDetailEditor.tagName;
+        const activeDetailResize = activeDetailStyle.resize;
+        const activeDetailSpellcheckDisabled = activeDetailEditor.spellcheck === false;
+        setTextAreaValue(activeDetailEditor, "多行\\n详情\\n编辑");
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("未保存 1"), "detail textarea edit not reflected");
         const gridStatusText = document.querySelector(".grid-status")?.textContent ?? "";
         const extraEntries = entries.filter((entry) => entry.name.startsWith("smoke-tab-"));
@@ -938,9 +1083,9 @@ async function runSmokeTestWhenLoaded(window) {
             tabNameOverflow: firstTabNameStyle?.overflow ?? "",
             tabNameTextOverflow: firstTabNameStyle?.textOverflow ?? "",
             toolsAboveFormula: Boolean(toolsRect && formulaRect && toolsRect.top < formulaRect.top),
-            detailEditorTag: detailEditor?.tagName ?? "",
-            detailEditorResize: detailStyle?.resize ?? "",
-            detailSpellcheckDisabled,
+            detailEditorTag: activeDetailEditorTag,
+            detailEditorResize: activeDetailResize,
+            detailSpellcheckDisabled: activeDetailSpellcheckDisabled,
             detailHeightBefore,
             detailHeightAfter,
             workspaceStatusRemoved,
@@ -969,6 +1114,7 @@ async function runSmokeTestWhenLoaded(window) {
             opened: quickOpenOpened,
             closed: quickOpenClosed
           },
+          split: splitVisual,
           savedVersion: saved.version
         };
       })();
@@ -1040,7 +1186,7 @@ async function runSmokeTestWhenLoaded(window) {
       !result.layout.gridStatusText.includes("选区 2 x 2") ||
       !result.layout.gridStatusText.includes("UTF-8")
     ) {
-      throw new Error("桌面编辑区布局或 Shift 选区烟测不正确。");
+      throw new Error(`桌面编辑区布局或 Shift 选区烟测不正确: ${JSON.stringify(result.layout)}`);
     }
     if (!result.headerDrag?.column.includes("选区 2 x 3") || !result.headerDrag?.row.includes("选区 2 x 2")) {
       throw new Error("桌面行列头拖选烟测不正确。");
@@ -1089,6 +1235,26 @@ async function runSmokeTestWhenLoaded(window) {
     }
     if (!result.quickOpen?.hoverDidNotSelect || !result.quickOpen.opened || !result.quickOpen.closed) {
       throw new Error(`桌面快速打开烟测不正确: ${JSON.stringify(result.quickOpen)}`);
+    }
+    if (
+      result.split?.paneCount !== 2 ||
+      !result.split.leftSelected.includes("smoke.csv") ||
+      !result.split.rightSelected.includes("smoke-long.csv") ||
+      !result.split.leftRendered ||
+      !result.split.rightRendered ||
+      !result.split.scrollable?.before?.vertical ||
+      !result.split.scrollable.before.horizontal ||
+      result.split.scrollable.after.scrollTop <= 0 ||
+      result.split.scrollable.after.scrollLeft <= 0 ||
+      !result.split.rightActive ||
+      !result.split.findScopedToRight ||
+      !result.split.ratioChanged ||
+      !result.split.leftRect ||
+      !result.split.rightRect ||
+      result.split.leftRect.width < 280 ||
+      result.split.rightRect.width < 280
+    ) {
+      throw new Error(`桌面左右分栏烟测不正确: ${JSON.stringify(result.split)}`);
     }
     if (resultPath) {
       fsSync.writeFileSync(resultPath, JSON.stringify(result, null, 2), "utf8");

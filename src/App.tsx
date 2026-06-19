@@ -4,14 +4,17 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent
 } from "react";
 import {
   AlertTriangle,
+  Columns2,
   Maximize2,
   Minimize2,
   Minus,
+  PanelRightClose,
   RefreshCw,
   RotateCcw,
   X
@@ -112,8 +115,16 @@ const SIDEBAR_MAX_WIDTH = 520;
 const SIDEBAR_DEFAULT_WIDTH = 310;
 const SIDEBAR_KEYBOARD_STEP = 20;
 const SIDEBAR_KEYBOARD_LARGE_STEP = 60;
+const SPLIT_MIN_RATIO = 28;
+const SPLIT_MAX_RATIO = 72;
+const SPLIT_DEFAULT_RATIO = 50;
+const SPLIT_KEYBOARD_STEP = 4;
+const SPLIT_KEYBOARD_LARGE_STEP = 10;
 const DEFAULT_GRID_SCROLL_POSITION: GridScrollPosition = { scrollTop: 0, scrollLeft: 0 };
 const DEFAULT_DESKTOP_WINDOW_STATE: DesktopWindowState = { maximized: false, fullscreen: false };
+
+type WorkspacePaneId = "left" | "right";
+type PaneTabIds = Record<WorkspacePaneId, string | null>;
 
 type Notice = {
   tone: "info" | "success" | "warning" | "error";
@@ -142,6 +153,11 @@ export function App() {
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [tabs, setTabs] = useState<CsvTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [paneTabIds, setPaneTabIds] = useState<PaneTabIds>({ left: null, right: null });
+  const [activePane, setActivePane] = useState<WorkspacePaneId>("left");
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitRatio, setSplitRatio] = useState(SPLIT_DEFAULT_RATIO);
+  const [splitResizing, setSplitResizing] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sidebarResizing, setSidebarResizing] = useState(false);
@@ -154,6 +170,8 @@ export function App() {
   const tabsRef = useRef(tabs);
   const activeEditDraftDirtyRef = useRef(activeEditDraftDirty);
   const activeTabIdRef = useRef(activeTabId);
+  const paneTabIdsRef = useRef(paneTabIds);
+  const activePaneRef = useRef(activePane);
   const recentTabIdsRef = useRef<string[]>([]);
   const tabSwitcherRef = useRef<TabSwitcherSession | null>(null);
   const quickOpenLoadSerialRef = useRef(0);
@@ -162,10 +180,12 @@ export function App() {
   const workspacePersistSnapshotRef = useRef("");
   const favoritePersistSnapshotRef = useRef("");
   const tabScrollPositionsRef = useRef<Record<string, GridScrollPosition>>({});
+  const paneScrollPositionsRef = useRef<Record<string, GridScrollPosition>>({});
   const pollBusyRef = useRef(false);
   const openingPathsRef = useRef(new Set<string>());
   const pendingActivatePathRef = useRef<string | null>(null);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const splitResizeRef = useRef<{ rectLeft: number; rectWidth: number } | null>(null);
   const directoryPickerAvailable = canPickDirectory();
   const svnCommitAvailable = Boolean(root?.directoryHandle && isDesktopDirectoryHandle(root.directoryHandle) && canOpenSvnCommit());
   const svnUpdateAvailable = Boolean(root?.directoryHandle && isDesktopDirectoryHandle(root.directoryHandle) && canOpenSvnUpdate());
@@ -187,6 +207,14 @@ export function App() {
   useEffect(() => {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
+
+  useEffect(() => {
+    paneTabIdsRef.current = paneTabIds;
+  }, [paneTabIds]);
+
+  useEffect(() => {
+    activePaneRef.current = activePane;
+  }, [activePane]);
 
   const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? null, [activeTabId, tabs]);
   const activeFavorite = useMemo(
@@ -318,6 +346,24 @@ export function App() {
     window.setTimeout(action, 0);
   }, []);
 
+  const activateTabInPane = useCallback((id: string, pane: WorkspacePaneId = activePaneRef.current) => {
+    activePaneRef.current = pane;
+    activeTabIdRef.current = id;
+    setActivePane(pane);
+    setActiveTabId(id);
+    setPaneTabIds((current) => ({ ...current, [pane]: id }));
+  }, []);
+
+  const focusPane = useCallback((pane: WorkspacePaneId) => {
+    activePaneRef.current = pane;
+    setActivePane(pane);
+    const paneTabId = paneTabIdsRef.current[pane];
+    if (paneTabId) {
+      activeTabIdRef.current = paneTabId;
+      setActiveTabId(paneTabId);
+    }
+  }, []);
+
   const replaceTabSwitcher = useCallback((next: TabSwitcherSession | null) => {
     tabSwitcherRef.current = next;
     setTabSwitcher(next);
@@ -372,9 +418,9 @@ export function App() {
       if (!tabsRef.current.some((tab) => tab.id === targetTabId)) {
         return;
       }
-      runAfterActiveEditCommit(() => setActiveTabId(targetTabId));
+      runAfterActiveEditCommit(() => activateTabInPane(targetTabId));
     },
-    [replaceTabSwitcher, runAfterActiveEditCommit]
+    [activateTabInPane, replaceTabSwitcher, runAfterActiveEditCommit]
   );
 
   const closeQuickOpen = useCallback(() => {
@@ -486,16 +532,45 @@ export function App() {
     }
   }, [replaceTabSwitcher, tabs]);
 
+  useEffect(() => {
+    const openIds = new Set(tabs.map((tab) => tab.id));
+    const fallbackId = (activeTabId && openIds.has(activeTabId) ? activeTabId : null) ?? tabs[0]?.id ?? null;
+    let nextPaneTabIds = paneTabIdsRef.current;
+    let paneIdsChanged = false;
+    for (const pane of ["left", "right"] as const) {
+      const currentId = nextPaneTabIds[pane];
+      if (currentId && openIds.has(currentId)) {
+        continue;
+      }
+      const replacement =
+        pane === "right"
+          ? tabs.find((tab) => tab.id !== (nextPaneTabIds.left ?? fallbackId))?.id ?? fallbackId
+          : fallbackId;
+      nextPaneTabIds = { ...nextPaneTabIds, [pane]: replacement ?? null };
+      paneIdsChanged = true;
+    }
+    if (paneIdsChanged) {
+      paneTabIdsRef.current = nextPaneTabIds;
+      setPaneTabIds(nextPaneTabIds);
+    }
+    if (activeTabId && openIds.has(activeTabId)) {
+      return;
+    }
+    activeTabIdRef.current = nextPaneTabIds[activePaneRef.current] ?? fallbackId;
+    setActiveTabId(activeTabIdRef.current);
+  }, [activeTabId, tabs]);
+
   const openFileRef = useCallback(
     async (fileRef: CsvFileRef, options: OpenFileOptions = {}) => {
       const shouldActivate = options.activate ?? true;
+      const targetPane = activePaneRef.current;
       if (shouldActivate) {
         pendingActivatePathRef.current = fileRef.path;
       }
       const existing = tabsRef.current.find((tab) => tab.path === fileRef.path);
       if (existing) {
         if (shouldActivate) {
-          setActiveTabId(existing.id);
+          activateTabInPane(existing.id, targetPane);
         }
         return;
       }
@@ -503,7 +578,7 @@ export function App() {
         window.setTimeout(() => {
           const opened = tabsRef.current.find((tab) => tab.path === fileRef.path);
           if (shouldActivate && opened && pendingActivatePathRef.current === fileRef.path) {
-            setActiveTabId(opened.id);
+            activateTabInPane(opened.id, targetPane);
           }
         }, 0);
         return;
@@ -515,7 +590,7 @@ export function App() {
         const tab = await createTabFromFileRef(fileRef, id);
         setTabs((current) => [...current, tab]);
         if (shouldActivate && pendingActivatePathRef.current === fileRef.path) {
-          setActiveTabId(id);
+          activateTabInPane(id, targetPane);
         }
         if (!options.quiet) {
           notify("success", `已打开 ${fileRef.name}`);
@@ -526,7 +601,7 @@ export function App() {
         window.setTimeout(() => openingPathsRef.current.delete(fileRef.path), 0);
       }
     },
-    [notify]
+    [activateTabInPane, notify]
   );
 
   const commitQuickOpenCandidate = useCallback(
@@ -543,13 +618,13 @@ export function App() {
       }
       runAfterActiveEditCommit(() => {
         if (candidate.tabId && tabsRef.current.some((tab) => tab.id === candidate.tabId)) {
-          setActiveTabId(candidate.tabId);
+          activateTabInPane(candidate.tabId);
           return;
         }
         void openFileRef(candidate.fileRef);
       });
     },
-    [closeQuickOpen, openFileRef, quickOpen, runAfterActiveEditCommit]
+    [activateTabInPane, closeQuickOpen, openFileRef, quickOpen, runAfterActiveEditCommit]
   );
 
   const handlePickDirectory = useCallback(async () => {
@@ -750,19 +825,19 @@ export function App() {
     [openFileRef, runAfterActiveEditCommit]
   );
 
-  const handleAddActiveFavorite = useCallback(() => {
-    if (!activeTab) {
+  const handleAddFavoriteForTab = useCallback((tab: CsvTab | null) => {
+    if (!tab) {
       notify("warning", "没有可收藏的当前文档。");
       return;
     }
-    if (favoriteFiles.some((favorite) => favorite.path === activeTab.path)) {
+    if (favoriteFiles.some((favorite) => favorite.path === tab.path)) {
       notify("info", "当前文档已在收藏中。");
       return;
     }
     const nextFavorite: CsvFavoriteFile = {
-      name: activeTab.name,
-      path: activeTab.path,
-      source: activeTab.fileRef.source
+      name: tab.name,
+      path: tab.path,
+      source: tab.fileRef.source
     };
     const nextFavorites = mergeFavoriteFiles([nextFavorite], favoriteFiles);
     favoritePersistSnapshotRef.current = serializeFavorites(nextFavorites);
@@ -778,8 +853,12 @@ export function App() {
         favoritePersistSnapshotRef.current = "";
         notify("error", error instanceof Error ? error.message : String(error));
       });
-    notify("success", `已加入收藏 ${activeTab.name}`);
-  }, [activeTab, favoriteFiles, notify]);
+    notify("success", `已加入收藏 ${tab.name}`);
+  }, [favoriteFiles, notify]);
+
+  const handleAddActiveFavorite = useCallback(() => {
+    handleAddFavoriteForTab(activeTab);
+  }, [activeTab, handleAddFavoriteForTab]);
 
   const handleOpenFavorite = useCallback(
     (favorite: CsvFavoriteFile) => {
@@ -964,19 +1043,23 @@ export function App() {
       const remaining = tabsRef.current.filter((item) => item.id !== id);
       tabsRef.current = remaining;
       setTabs(remaining);
-      setActiveTabId((current) => {
-        if (current !== id) {
-          return current;
-        }
-        return remaining[remaining.length - 1]?.id ?? null;
-      });
+      const fallbackId = remaining[remaining.length - 1]?.id ?? null;
+      const nextPaneTabIds: PaneTabIds = {
+        left: paneTabIdsRef.current.left === id ? fallbackId : paneTabIdsRef.current.left,
+        right: paneTabIdsRef.current.right === id ? fallbackId : paneTabIdsRef.current.right
+      };
+      paneTabIdsRef.current = nextPaneTabIds;
+      setPaneTabIds(nextPaneTabIds);
+      const nextActiveId = activeTabIdRef.current === id ? nextPaneTabIds[activePaneRef.current] ?? fallbackId : activeTabIdRef.current;
+      activeTabIdRef.current = nextActiveId;
+      setActiveTabId(nextActiveId);
     },
     []
   );
 
   const activateTabAfterEditCommit = useCallback(
-    (id: string) => runAfterActiveEditCommit(() => setActiveTabId(id)),
-    [runAfterActiveEditCommit]
+    (id: string) => runAfterActiveEditCommit(() => activateTabInPane(id)),
+    [activateTabInPane, runAfterActiveEditCommit]
   );
 
   const closeTabAfterEditCommit = useCallback(
@@ -1150,17 +1233,36 @@ export function App() {
 
   const updateActiveTab = useCallback(
     (updater: (tab: CsvTab) => CsvTab) => {
-      if (!activeTabId) {
+      const targetTabId = activeTabIdRef.current;
+      if (!targetTabId) {
         return;
       }
-      patchTab(activeTabId, updater);
+      patchTab(targetTabId, updater);
     },
-    [activeTabId, patchTab]
+    [patchTab]
   );
 
   const selectedStats = activeTab
-    ? `${activeTab.data.length} 行 / ${maxColumnCount(activeTab.data)} 列 / ${activeTab.encoding.toUpperCase()}`
+    ? formatSelectedStats(activeTab)
     : "未打开文件";
+
+  function formatSelectedStats(tab: CsvTab): string {
+    return `${tab.data.length} 行 / ${maxColumnCount(tab.data)} 列 / ${tab.encoding.toUpperCase()}`;
+  }
+
+  const isFavoriteTab = (tab: CsvTab) => favoriteFiles.some((favorite) => favorite.path === tab.path);
+
+  const getPaneScrollPosition = (pane: WorkspacePaneId, tabId: string) =>
+    paneScrollPositionsRef.current[`${pane}:${tabId}`] ??
+    tabScrollPositionsRef.current[tabId] ??
+    DEFAULT_GRID_SCROLL_POSITION;
+
+  const rememberPaneScrollPosition = (pane: WorkspacePaneId, tabId: string, position: GridScrollPosition) => {
+    paneScrollPositionsRef.current[`${pane}:${tabId}`] = position;
+    if (pane === "left") {
+      tabScrollPositionsRef.current[tabId] = position;
+    }
+  };
 
   const moveSidebarResize = useCallback((event: PointerEvent) => {
     const start = sidebarResizeRef.current;
@@ -1197,13 +1299,57 @@ export function App() {
     [moveSidebarResize, sidebarWidth, stopSidebarResize]
   );
 
+  const moveSplitResize = useCallback((event: PointerEvent) => {
+    const resize = splitResizeRef.current;
+    if (!resize || resize.rectWidth <= 0) {
+      return;
+    }
+    const nextRatio = ((event.clientX - resize.rectLeft) / resize.rectWidth) * 100;
+    setSplitRatio(clamp(nextRatio, SPLIT_MIN_RATIO, SPLIT_MAX_RATIO));
+  }, []);
+
+  const stopSplitResize = useCallback(() => {
+    splitResizeRef.current = null;
+    setSplitResizing(false);
+    window.removeEventListener("pointermove", moveSplitResize);
+    window.removeEventListener("pointerup", stopSplitResize);
+    window.removeEventListener("blur", stopSplitResize);
+  }, [moveSplitResize]);
+
+  const beginSplitResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+      const parent = event.currentTarget.parentElement;
+      if (!parent) {
+        return;
+      }
+      event.preventDefault();
+      const rect = parent.getBoundingClientRect();
+      splitResizeRef.current = {
+        rectLeft: rect.left,
+        rectWidth: rect.width
+      };
+      setSplitResizing(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      window.addEventListener("pointermove", moveSplitResize);
+      window.addEventListener("pointerup", stopSplitResize, { once: true });
+      window.addEventListener("blur", stopSplitResize, { once: true });
+    },
+    [moveSplitResize, stopSplitResize]
+  );
+
   useEffect(() => {
     return () => {
       window.removeEventListener("pointermove", moveSidebarResize);
       window.removeEventListener("pointerup", stopSidebarResize);
       window.removeEventListener("blur", stopSidebarResize);
+      window.removeEventListener("pointermove", moveSplitResize);
+      window.removeEventListener("pointerup", stopSplitResize);
+      window.removeEventListener("blur", stopSplitResize);
     };
-  }, [moveSidebarResize, stopSidebarResize]);
+  }, [moveSidebarResize, moveSplitResize, stopSidebarResize, stopSplitResize]);
 
   const handleSidebarResizeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1227,13 +1373,660 @@ export function App() {
     [sidebarWidth]
   );
 
+  const handleSplitResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const step = event.shiftKey ? SPLIT_KEYBOARD_LARGE_STEP : SPLIT_KEYBOARD_STEP;
+      let nextRatio = splitRatio;
+      if (event.key === "ArrowLeft") {
+        nextRatio -= step;
+      } else if (event.key === "ArrowRight") {
+        nextRatio += step;
+      } else if (event.key === "Home") {
+        nextRatio = SPLIT_MIN_RATIO;
+      } else if (event.key === "End") {
+        nextRatio = SPLIT_MAX_RATIO;
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      setSplitRatio(clamp(nextRatio, SPLIT_MIN_RATIO, SPLIT_MAX_RATIO));
+    },
+    [splitRatio]
+  );
+
   const handleToggleMaximize = useCallback(async () => {
     setDesktopWindowState(await toggleMaximizeDesktopWindow());
   }, []);
 
+  const chooseSecondaryTabId = useCallback(
+    (primaryId: string | null) => tabs.find((tab) => tab.id !== primaryId)?.id ?? primaryId,
+    [tabs]
+  );
+
+  const enableSplitView = useCallback(() => {
+    const leftId = paneTabIdsRef.current.left ?? activeTabIdRef.current ?? tabs[0]?.id ?? null;
+    const rightId = paneTabIdsRef.current.right ?? chooseSecondaryTabId(leftId);
+    const nextPaneTabIds = { left: leftId, right: rightId };
+    paneTabIdsRef.current = nextPaneTabIds;
+    setPaneTabIds(nextPaneTabIds);
+    setSplitEnabled(true);
+    if (leftId) {
+      activePaneRef.current = "left";
+      activeTabIdRef.current = leftId;
+      setActivePane("left");
+      setActiveTabId(leftId);
+    }
+  }, [chooseSecondaryTabId, tabs]);
+
+  const disableSplitView = useCallback(() => {
+    setSplitEnabled(false);
+    const activePaneTabId = paneTabIdsRef.current[activePaneRef.current] ?? paneTabIdsRef.current.left ?? tabs[0]?.id ?? null;
+    if (activePaneTabId) {
+      const activePaneScrollPosition = paneScrollPositionsRef.current[`${activePaneRef.current}:${activePaneTabId}`];
+      if (activePaneScrollPosition) {
+        tabScrollPositionsRef.current[activePaneTabId] = activePaneScrollPosition;
+      }
+      activeTabIdRef.current = activePaneTabId;
+      setActiveTabId(activePaneTabId);
+      setPaneTabIds((current) => ({ ...current, left: activePaneTabId }));
+    }
+  }, [tabs]);
+
+  const renderGridEditor = (tab: CsvTab, paneId: WorkspacePaneId) => {
+    const paneFavorite = isFavoriteTab(tab);
+    const updatePaneTab = (updater: (tab: CsvTab) => CsvTab) => patchTab(tab.id, updater);
+
+    return (
+      <GridEditor
+        key={`${paneId}:${tab.id}`}
+        active={activePane === paneId}
+        tab={tab}
+        dirtyCount={dirtyCount}
+        selectedStats={formatSelectedStats(tab)}
+        notice={notice}
+        scrollPosition={getPaneScrollPosition(paneId, tab.id)}
+        onScrollPositionChange={(_, position) => rememberPaneScrollPosition(paneId, tab.id, position)}
+        onSelectionChange={(selection) => updatePaneTab((current) => ({ ...current, selection }))}
+        onSetCell={(row, col, value) =>
+          updatePaneTab((current) => {
+            if (current.lockedCells.includes(cellKey(row, col))) {
+              return current;
+            }
+            if (readCell(current.data, row, col) === value) {
+              return current;
+            }
+            const base = pushUndo(current);
+            return {
+              ...base,
+              data: writeCell(base.data, row, col, value),
+              dirty: true,
+              status: "已修改"
+            };
+          })
+        }
+        onPaste={(startRow, startCol, values) =>
+          updatePaneTab((current) => {
+            const locked = new Set(current.lockedCells);
+            let data = current.data;
+            let changed = false;
+            let skippedLocked = 0;
+            values.forEach((line, rowOffset) => {
+              line.forEach((value, colOffset) => {
+                const row = startRow + rowOffset;
+                const col = startCol + colOffset;
+                if (locked.has(cellKey(row, col))) {
+                  skippedLocked += 1;
+                } else if (readCell(data, row, col) !== value) {
+                  data = writeCell(data, row, col, value);
+                  changed = true;
+                }
+              });
+            });
+            const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 个` : "";
+            if (!changed) {
+              return { ...current, status: `粘贴内容没有改变${lockStatus}` };
+            }
+            const base = pushUndo(current);
+            return {
+              ...base,
+              data,
+              dirty: true,
+              status: `已粘贴${lockStatus}`
+            };
+          })
+        }
+        onPasteCells={(updates) =>
+          updatePaneTab((current) => {
+            const locked = new Set(current.lockedCells);
+            const seen = new Set<string>();
+            let data = current.data;
+            let changed = false;
+            let changedCount = 0;
+            let skippedLocked = 0;
+            for (const update of updates) {
+              const key = cellKey(update.row, update.col);
+              if (seen.has(key)) {
+                continue;
+              }
+              seen.add(key);
+              if (locked.has(key)) {
+                skippedLocked += 1;
+                continue;
+              }
+              if (readCell(data, update.row, update.col) !== update.value) {
+                data = writeCell(data, update.row, update.col, update.value);
+                changed = true;
+                changedCount += 1;
+              }
+            }
+            const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 个` : "";
+            if (!changed) {
+              return { ...current, status: `粘贴内容没有改变${lockStatus}` };
+            }
+            const base = pushUndo(current);
+            return {
+              ...base,
+              data,
+              dirty: true,
+              status: `已粘贴 ${changedCount} 格${lockStatus}`
+            };
+          })
+        }
+        onClearRange={(startRow, startCol, endRow, endCol) =>
+          updatePaneTab((current) => {
+            const range = normalizeSelection({ anchorRow: startRow, anchorCol: startCol, focusRow: endRow, focusCol: endCol });
+            const locked = new Set(current.lockedCells);
+            let data = current.data;
+            let changed = false;
+            let skippedLocked = 0;
+            for (let row = range.startRow; row <= range.endRow; row += 1) {
+              if (row >= current.data.length) {
+                continue;
+              }
+              const rowWidth = current.data[row]?.length ?? 0;
+              for (let col = range.startCol; col <= range.endCol; col += 1) {
+                if (col >= rowWidth) {
+                  continue;
+                }
+                if (locked.has(cellKey(row, col))) {
+                  skippedLocked += 1;
+                } else if (readCell(data, row, col) !== "") {
+                  data = writeCell(data, row, col, "");
+                  changed = true;
+                }
+              }
+            }
+            const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 个` : "";
+            if (!changed) {
+              return { ...current, status: `没有可清空的内容${lockStatus}` };
+            }
+            const base = pushUndo(current);
+            return { ...base, data, dirty: true, status: `已清空选区${lockStatus}` };
+          })
+        }
+        onClearCells={(cells) =>
+          updatePaneTab((current) => {
+            const locked = new Set(current.lockedCells);
+            const seen = new Set<string>();
+            let data = current.data;
+            let changed = false;
+            let changedCount = 0;
+            let skippedLocked = 0;
+            for (const cell of cells) {
+              const key = cellKey(cell.row, cell.col);
+              if (seen.has(key)) {
+                continue;
+              }
+              seen.add(key);
+              if (cell.row >= current.data.length || cell.col >= (current.data[cell.row]?.length ?? 0)) {
+                continue;
+              }
+              if (locked.has(key)) {
+                skippedLocked += 1;
+              } else if (readCell(data, cell.row, cell.col) !== "") {
+                data = writeCell(data, cell.row, cell.col, "");
+                changed = true;
+                changedCount += 1;
+              }
+            }
+            const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 个` : "";
+            if (!changed) {
+              return { ...current, status: `没有可清空的内容${lockStatus}` };
+            }
+            const base = pushUndo(current);
+            return { ...base, data, dirty: true, status: `已清空 ${changedCount} 个可见单元格${lockStatus}` };
+          })
+        }
+        onToggleLock={(startRow, startCol, endRow, endCol, locked) =>
+          updatePaneTab((current) => {
+            const base = pushUndo(current);
+            const next = new Set(base.lockedCells);
+            for (let row = startRow; row <= endRow; row += 1) {
+              for (let col = startCol; col <= endCol; col += 1) {
+                const key = cellKey(row, col);
+                if (locked) {
+                  next.add(key);
+                } else {
+                  next.delete(key);
+                }
+              }
+            }
+            return { ...base, lockedCells: [...next], status: locked ? "已锁定选区" : "已解锁选区" };
+          })
+        }
+        onToggleLockCells={(cells, locked) =>
+          updatePaneTab((current) => {
+            const base = pushUndo(current);
+            const next = new Set(base.lockedCells);
+            const seen = new Set<string>();
+            for (const cell of cells) {
+              const key = cellKey(cell.row, cell.col);
+              if (seen.has(key)) {
+                continue;
+              }
+              seen.add(key);
+              if (locked) {
+                next.add(key);
+              } else {
+                next.delete(key);
+              }
+            }
+            return { ...base, lockedCells: [...next], status: locked ? "已锁定可见选区" : "已解锁可见选区" };
+          })
+        }
+        onSetZoom={(zoom) => updatePaneTab((current) => ({ ...current, zoom }))}
+        onSetFreeze={(rows, cols) =>
+          updatePaneTab((current) => ({
+            ...current,
+            freezeRows: Math.max(0, rows),
+            freezeCols: Math.max(0, cols),
+            status: rows || cols ? "已设置冻结" : "已取消冻结"
+          }))
+        }
+        onSetColWidth={(col, width) =>
+          updatePaneTab((current) => ({ ...current, colWidths: { ...current.colWidths, [col]: width } }))
+        }
+        onSetColumnFilter={(col, selectedValues) =>
+          updatePaneTab((current) => {
+            const nextFilters = { ...current.columnFilters };
+            if (selectedValues === null) {
+              delete nextFilters[col];
+            } else {
+              nextFilters[col] = [...new Set(selectedValues)];
+            }
+            const activeCount = Object.keys(nextFilters).length;
+            return {
+              ...current,
+              columnFilters: nextFilters,
+              status: selectedValues === null ? "已清除列筛选" : `已筛选 ${activeCount} 列`
+            };
+          })
+        }
+        onClearAllFilters={() =>
+          updatePaneTab((current) => ({
+            ...current,
+            columnFilters: {},
+            status: "已清除全部筛选"
+          }))
+        }
+        onSetAutoRefresh={(enabled) =>
+          updatePaneTab((current) => ({
+            ...current,
+            autoRefresh: enabled,
+            externalChanged: enabled && !current.dirty ? false : current.externalChanged,
+            status: enabled ? "已开启自动热刷" : "已暂停自动热刷"
+          }))
+        }
+        onSetFindQuery={(findQuery) => updatePaneTab((current) => ({ ...current, findQuery }))}
+        onSetReplaceValue={(replaceValue) => updatePaneTab((current) => ({ ...current, replaceValue }))}
+        onSetFindSnapshot={(findSnapshot: CsvFindSnapshot | null) => updatePaneTab((current) => ({ ...current, findSnapshot }))}
+        onSetStatus={(status) => updatePaneTab((current) => ({ ...current, status }))}
+        onEditDraftDirtyChange={setActiveEditDraftDirty}
+        canAddActiveFavorite={!paneFavorite}
+        isActiveFavorite={paneFavorite}
+        onAddActiveFavorite={() => handleAddFavoriteForTab(tab)}
+        onReplaceCurrent={(query) =>
+          updatePaneTab((current) => {
+            const normalizedQuery = query.trim();
+            const { focusRow, focusCol } = current.selection;
+            if (!normalizedQuery) {
+              return current;
+            }
+            if (current.lockedCells.includes(cellKey(focusRow, focusCol))) {
+              return { ...current, status: "当前格已锁定，不能替换" };
+            }
+            if (!readCell(current.data, focusRow, focusCol).toLowerCase().includes(normalizedQuery.toLowerCase())) {
+              return { ...current, status: "当前格没有匹配内容" };
+            }
+            const base = pushUndo(current);
+            return {
+              ...base,
+              data: replaceCellText(base.data, focusRow, focusCol, normalizedQuery, base.replaceValue),
+              dirty: true,
+              status: "已替换当前匹配"
+            };
+          })
+        }
+        onReplaceFindResults={(results, query) =>
+          updatePaneTab((current) => {
+            const normalizedQuery = query.trim();
+            if (!normalizedQuery || results.length === 0) {
+              return current;
+            }
+            const locked = new Set(current.lockedCells);
+            const seen = new Set<string>();
+            let data = current.data;
+            let count = 0;
+            let skippedLocked = 0;
+            for (const result of results) {
+              const key = cellKey(result.row, result.col);
+              if (seen.has(key)) {
+                continue;
+              }
+              seen.add(key);
+              if (locked.has(key)) {
+                skippedLocked += 1;
+                continue;
+              }
+              const replacement = replaceAllMatchesInCell(data, result.row, result.col, normalizedQuery, current.replaceValue);
+              data = replacement.data;
+              count += replacement.count;
+            }
+            const lockStatus = skippedLocked > 0 ? `，跳过锁定 ${skippedLocked} 格` : "";
+            if (count === 0) {
+              return { ...current, status: `没有可替换的匹配内容${lockStatus}` };
+            }
+            const base = pushUndo(current);
+            return {
+              ...base,
+              data,
+              dirty: true,
+              status: `已替换 ${count} 处${lockStatus}`
+            };
+          })
+        }
+        onApplyCellStyle={(startRow, startCol, endRow, endCol, stylePatch) =>
+          updatePaneTab((current) => {
+            const range = normalizeSelection({ anchorRow: startRow, anchorCol: startCol, focusRow: endRow, focusCol: endCol });
+            const result = applyCellStylePatchToRange(
+              current.cellStyles,
+              range.startRow,
+              range.startCol,
+              range.endRow,
+              range.endCol,
+              stylePatch
+            );
+            if (result.changedCount === 0) {
+              return { ...current, status: "颜色没有变化" };
+            }
+            const base = pushUndo(current);
+            return {
+              ...base,
+              cellStyles: result.styles,
+              status: `已设置颜色 ${result.changedCount} 格`
+            };
+          })
+        }
+        onApplyCellStyleToCells={(cells, stylePatch) =>
+          updatePaneTab((current) => {
+            const result = applyCellStylePatchToCells(current.cellStyles, cells, stylePatch);
+            if (result.changedCount === 0) {
+              return { ...current, status: "颜色没有变化" };
+            }
+            const base = pushUndo(current);
+            return {
+              ...base,
+              cellStyles: result.styles,
+              status: `已设置可见颜色 ${result.changedCount} 格`
+            };
+          })
+        }
+        canUndo={tab.undoStack.length > 0}
+        canRedo={tab.redoStack.length > 0}
+        onUndo={() => updatePaneTab(undoTab)}
+        onRedo={() => updatePaneTab(redoTab)}
+        onSaveRequest={() => void saveTab(tab.id)}
+        onInsertRows={(startRow, endRow) =>
+          updatePaneTab((current) => {
+            const base = pushUndo(current);
+            const count = endRow - startRow + 1;
+            return {
+              ...base,
+              data: insertRows(base.data, startRow, count),
+              sourceRows: insertSourceRows(base.sourceRows, startRow, count),
+              lockedCells: shiftLockedCellsForInsertedRows(base.lockedCells, startRow, count),
+              cellStyles: shiftCellStylesForInsertedRows(base.cellStyles, startRow, count),
+              selection: singleCellSelection(startRow, base.selection.focusCol),
+              dirty: true,
+              status: `已插入 ${count} 行`
+            };
+          })
+        }
+        onDeleteRows={(startRow, endRow) =>
+          updatePaneTab((current) => {
+            if (startRow >= current.data.length) {
+              return { ...current, status: "选中行没有已有数据" };
+            }
+            const clampedEndRow = Math.min(endRow, current.data.length - 1);
+            if (hasLockedCellInRows(current.lockedCells, startRow, clampedEndRow)) {
+              return { ...current, status: "选中行包含锁定格，不能删除" };
+            }
+            const base = pushUndo(current);
+            const nextData = deleteRows(base.data, startRow, clampedEndRow);
+            const nextRow = Math.min(startRow, Math.max(0, nextData.length - 1));
+            return {
+              ...base,
+              data: nextData,
+              sourceRows: deleteSourceRows(base.sourceRows, startRow, clampedEndRow),
+              lockedCells: shiftLockedCellsForDeletedRows(base.lockedCells, startRow, clampedEndRow),
+              cellStyles: shiftCellStylesForDeletedRows(base.cellStyles, startRow, clampedEndRow),
+              selection: singleCellSelection(nextRow, base.selection.focusCol),
+              dirty: true,
+              status: `已删除 ${clampedEndRow - startRow + 1} 行`
+            };
+          })
+        }
+        onDeleteRowsByIndexes={(rows) =>
+          updatePaneTab((current) => {
+            const targetRows = [...new Set(rows)]
+              .filter((row) => Number.isInteger(row) && row >= 0 && row < current.data.length)
+              .sort((left, right) => left - right);
+            if (targetRows.length === 0) {
+              return { ...current, status: "选中行没有已有数据" };
+            }
+            if (hasLockedCellInRowIndexes(current.lockedCells, targetRows)) {
+              return { ...current, status: "可见选中行包含锁定格，不能删除" };
+            }
+            const base = pushUndo(current);
+            const nextData = deleteRowsByIndexes(base.data, targetRows);
+            const nextRow = Math.min(targetRows[0], Math.max(0, nextData.length - 1));
+            return {
+              ...base,
+              data: nextData,
+              sourceRows: deleteSourceRowsByIndexes(base.sourceRows, targetRows),
+              lockedCells: shiftLockedCellsForDeletedRowIndexes(base.lockedCells, targetRows),
+              cellStyles: shiftCellStylesForDeletedRowIndexes(base.cellStyles, targetRows),
+              selection: singleCellSelection(nextRow, base.selection.focusCol),
+              dirty: true,
+              status: `已删除 ${targetRows.length} 个可见行`
+            };
+          })
+        }
+        onInsertColumns={(startCol, endCol) =>
+          updatePaneTab((current) => {
+            const base = pushUndo(current);
+            const count = endCol - startCol + 1;
+            const nextData = insertColumns(base.data, startCol, count);
+            return {
+              ...base,
+              data: nextData,
+              sourceRows: insertSourceColumns(
+                base.sourceRows,
+                base.data,
+                startCol,
+                count,
+                base.delimiter,
+                nextData
+              ),
+              lockedCells: shiftLockedCellsForInsertedColumns(base.lockedCells, startCol, count),
+              cellStyles: shiftCellStylesForInsertedColumns(base.cellStyles, startCol, count),
+              columnFilters: shiftColumnFiltersForInsertedColumns(base.columnFilters, startCol, count),
+              selection: singleCellSelection(base.selection.focusRow, startCol),
+              dirty: true,
+              status: `已插入 ${count} 列`
+            };
+          })
+        }
+        onDeleteColumns={(startCol, endCol) =>
+          updatePaneTab((current) => {
+            const width = maxColumnCount(current.data);
+            if (startCol >= width) {
+              return { ...current, status: "选中列没有已有数据" };
+            }
+            const clampedEndCol = Math.min(endCol, width - 1);
+            if (hasLockedCellInColumns(current.lockedCells, startCol, clampedEndCol)) {
+              return { ...current, status: "选中列包含锁定格，不能删除" };
+            }
+            const base = pushUndo(current);
+            const nextData = deleteColumns(base.data, startCol, clampedEndCol);
+            const nextCol = Math.min(startCol, Math.max(0, maxColumnCount(nextData) - 1));
+            return {
+              ...base,
+              data: nextData,
+              sourceRows: deleteSourceColumns(
+                base.sourceRows,
+                base.data,
+                startCol,
+                clampedEndCol,
+                base.delimiter,
+                nextData
+              ),
+              lockedCells: shiftLockedCellsForDeletedColumns(base.lockedCells, startCol, clampedEndCol),
+              cellStyles: shiftCellStylesForDeletedColumns(base.cellStyles, startCol, clampedEndCol),
+              columnFilters: shiftColumnFiltersForDeletedColumns(base.columnFilters, startCol, clampedEndCol),
+              selection: singleCellSelection(base.selection.focusRow, nextCol),
+              dirty: true,
+              status: `已删除 ${clampedEndCol - startCol + 1} 列`
+            };
+          })
+        }
+        onAddRow={() =>
+          updatePaneTab((current) => {
+            const base = pushUndo(current);
+            return {
+              ...base,
+              data: [...base.data, Array.from({ length: Math.max(1, maxColumnCount(base.data)) }, () => "")],
+              sourceRows: [...base.sourceRows, undefined],
+              dirty: true,
+              status: "已新增行"
+            };
+          })
+        }
+        onAddColumn={() =>
+          updatePaneTab((current) => {
+            const base = pushUndo(current);
+            const width = maxColumnCount(base.data);
+            const nextData = base.data.length
+              ? base.data.map((row) => {
+                  const normalized = [...row];
+                  while (normalized.length < width) {
+                    normalized.push("");
+                  }
+                  return [...normalized, ""];
+                })
+              : [[""]];
+            return {
+              ...base,
+              data: nextData,
+              sourceRows: insertSourceColumns(
+                base.sourceRows,
+                base.data,
+                width,
+                1,
+                base.delimiter,
+                nextData
+              ),
+              dirty: true,
+              status: "已新增列"
+            };
+          })
+        }
+      />
+    );
+  };
+
+  const leftPaneTab = tabs.find((tab) => tab.id === (paneTabIds.left ?? activeTabId)) ?? activeTab;
+  const rightPaneTab =
+    tabs.find((tab) => tab.id === paneTabIds.right) ??
+    tabs.find((tab) => tab.id !== leftPaneTab?.id) ??
+    leftPaneTab;
+  const splitViewActive = splitEnabled && Boolean(leftPaneTab);
+  const workspacePaneStyle = splitViewActive
+    ? ({
+        "--split-left": `${splitRatio}%`,
+        "--split-right": `${100 - splitRatio}%`
+      } as CSSProperties)
+    : undefined;
+
+  const renderWorkspacePane = (paneId: WorkspacePaneId, tab: CsvTab | null | undefined) => {
+    const paneActive = activePane === paneId;
+    const paneName = paneId === "left" ? "左侧" : "右侧";
+    return (
+      <section
+        className={`workspace-pane ${paneActive ? "active" : ""}`}
+        aria-label={`${paneName}分栏`}
+        onPointerDownCapture={() => focusPane(paneId)}
+        onFocusCapture={() => focusPane(paneId)}
+      >
+        {splitViewActive ? (
+          <div className="pane-header">
+            <button
+              type="button"
+              className={`pane-activation ${paneActive ? "active" : ""}`}
+              onClick={() => focusPane(paneId)}
+              aria-pressed={paneActive}
+            >
+              {paneName}
+            </button>
+            <select
+              className="pane-tab-select"
+              aria-label={`${paneName}分栏显示的表格`}
+              value={tab?.id ?? ""}
+              onChange={(event) => {
+                if (event.target.value) {
+                  activateTabInPane(event.target.value, paneId);
+                }
+              }}
+            >
+              {tabs.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.dirty ? " *" : ""}
+                </option>
+              ))}
+            </select>
+            {paneId === "right" ? (
+              <button className="icon-button" onClick={disableSplitView} title="关闭右侧分栏" aria-label="关闭右侧分栏">
+                <PanelRightClose size={15} />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="pane-body">
+          {tab ? renderGridEditor(tab, paneId) : (
+            <div className="empty-workspace">
+              <FilePrompt />
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  };
+
   return (
     <div
-      className={`app-frame ${sidebarResizing ? "resizing-sidebar" : ""}`}
+      className={`app-frame ${sidebarResizing ? "resizing-sidebar" : ""} ${splitResizing ? "resizing-split" : ""}`}
       style={{ gridTemplateColumns: `${sidebarWidth}px 6px minmax(0, 1fr)` }}
     >
       <DirectoryPane
@@ -1283,6 +2076,18 @@ export function App() {
             onActivate={activateTabAfterEditCommit}
             onClose={closeTabAfterEditCommit}
           />
+          <div className="topbar-view-controls">
+            <button
+              className={`icon-button split-toggle ${splitEnabled ? "active" : ""}`}
+              onClick={splitEnabled ? disableSplitView : enableSplitView}
+              disabled={tabs.length === 0}
+              title={splitEnabled ? "关闭左右分栏" : "开启左右分栏"}
+              aria-label={splitEnabled ? "关闭左右分栏" : "开启左右分栏"}
+              aria-pressed={splitEnabled}
+            >
+              <Columns2 size={16} />
+            </button>
+          </div>
           {desktopWindowControlsAvailable ? (
             <div className="window-controls" aria-label="窗口控制">
               <button className="window-control" onClick={() => void minimizeDesktopWindow()} title="最小化" aria-label="最小化">
@@ -1316,7 +2121,29 @@ export function App() {
           ) : null}
         </div>
 
-        {activeTab ? (
+        {splitViewActive ? (
+          <div
+            className={`workspace-panes split ${splitResizing ? "resizing" : ""}`}
+            style={workspacePaneStyle}
+          >
+            {renderWorkspacePane("left", leftPaneTab)}
+            <div
+              className="workspace-splitter"
+              role="separator"
+              aria-label="调整左右分栏比例"
+              aria-orientation="vertical"
+              aria-valuemin={SPLIT_MIN_RATIO}
+              aria-valuemax={SPLIT_MAX_RATIO}
+              aria-valuenow={Math.round(splitRatio)}
+              tabIndex={0}
+              title="拖拽调整左右分栏比例，双击还原"
+              onPointerDown={beginSplitResize}
+              onDoubleClick={() => setSplitRatio(SPLIT_DEFAULT_RATIO)}
+              onKeyDown={handleSplitResizeKeyDown}
+            />
+            {renderWorkspacePane("right", rightPaneTab)}
+          </div>
+        ) : activeTab ? (
           <GridEditor
             tab={activeTab}
             dirtyCount={dirtyCount}

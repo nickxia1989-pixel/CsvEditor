@@ -26,6 +26,11 @@ async function main() {
     const padded = String(index).padStart(2, "0");
     fs.writeFileSync(path.join(tempRoot, `smoke-tab-${padded}.csv`), `A,B\r\n${index},${index + 1}\r\n`, "utf8");
   }
+  const longHeader = Array.from({ length: 14 }, (_value, index) => `LongCol${index + 1}`).join(",");
+  const longRows = Array.from({ length: 180 }, (_value, index) =>
+    Array.from({ length: 14 }, (_cell, col) => `LONG_R${index + 1}_C${col + 1}`).join(",")
+  );
+  fs.writeFileSync(path.join(tempRoot, "smoke-long.csv"), `${longHeader}\r\n${longRows.join("\r\n")}\r\n`, "utf8");
 
   const electronExecutable = args.exe || require("electron");
   const childArgs = args.exe ? [] : [projectRoot];
@@ -85,6 +90,7 @@ async function main() {
         visual: result.visual,
         search: result.search,
         quickOpen: result.quickOpen,
+        split: result.split,
         windowControls: result.windowControls,
         regions: result.regions,
         layout: result.layout

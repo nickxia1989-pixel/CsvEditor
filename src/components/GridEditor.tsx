@@ -105,6 +105,7 @@ type GridEditorProps = {
   onDeleteColumns(startCol: number, endCol: number): void;
   onAddRow(): void;
   onAddColumn(): void;
+  active?: boolean;
 };
 
 type ViewportState = {
@@ -206,7 +207,8 @@ export function GridEditor({
   onInsertColumns,
   onDeleteColumns,
   onAddRow,
-  onAddColumn
+  onAddColumn,
+  active = true
 }: GridEditorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const keyProxyRef = useRef<HTMLInputElement | null>(null);
@@ -1031,6 +1033,9 @@ export function GridEditor({
 
   useEffect(() => {
     const handleFindShortcut = (event: KeyboardEvent) => {
+      if (!active) {
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
         if (findPanelOpen) {
@@ -1042,7 +1047,7 @@ export function GridEditor({
     };
     window.addEventListener("keydown", handleFindShortcut);
     return () => window.removeEventListener("keydown", handleFindShortcut);
-  }, [findPanelOpen]);
+  }, [active, findPanelOpen]);
 
   const applySelectionStyle = (stylePatch: Partial<CsvCellStyle>) => {
     runAfterCommittingEditAndClearingCopiedRange(() => {
