@@ -1421,15 +1421,17 @@ export function App() {
 
   const disableSplitView = useCallback(() => {
     setSplitEnabled(false);
-    const activePaneTabId = paneTabIdsRef.current[activePaneRef.current] ?? paneTabIdsRef.current.left ?? tabs[0]?.id ?? null;
-    if (activePaneTabId) {
-      const activePaneScrollPosition = paneScrollPositionsRef.current[`${activePaneRef.current}:${activePaneTabId}`];
-      if (activePaneScrollPosition) {
-        tabScrollPositionsRef.current[activePaneTabId] = activePaneScrollPosition;
+    const leftPaneTabId = paneTabIdsRef.current.left ?? tabs[0]?.id ?? null;
+    activePaneRef.current = "left";
+    setActivePane("left");
+    if (leftPaneTabId) {
+      const leftPaneScrollPosition = paneScrollPositionsRef.current[`left:${leftPaneTabId}`];
+      if (leftPaneScrollPosition) {
+        tabScrollPositionsRef.current[leftPaneTabId] = leftPaneScrollPosition;
       }
-      activeTabIdRef.current = activePaneTabId;
-      setActiveTabId(activePaneTabId);
-      setPaneTabIds((current) => ({ ...current, left: activePaneTabId }));
+      activeTabIdRef.current = leftPaneTabId;
+      setActiveTabId(leftPaneTabId);
+      setPaneTabIds((current) => ({ ...current, left: leftPaneTabId }));
     }
   }, [tabs]);
 

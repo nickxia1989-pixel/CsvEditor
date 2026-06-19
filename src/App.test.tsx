@@ -1476,6 +1476,11 @@ describe("App local directory flow", () => {
     fireEvent.pointerMove(window, { clientX: 650 });
 
     await waitFor(() => expect(splitter).toHaveAttribute("aria-valuenow", "65"));
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭左右分栏" }));
+    await waitFor(() => expect(screen.queryByLabelText("左侧分栏")).not.toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: "left.csv" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("LeftHead");
   });
 
   it("does not move the selected cell when Ctrl+Tab is pressed with only one open table", async () => {

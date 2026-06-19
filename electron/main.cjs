@@ -923,6 +923,10 @@ async function runSmokeTestWhenLoaded(window) {
             document.querySelector("button[aria-label='开启左右分栏']"),
           "split view did not close"
         );
+        const splitClosedSelectedTab = Array.from(document.querySelectorAll("[role='tab']")).find(
+          (tab) => tab.getAttribute("aria-selected") === "true"
+        );
+        splitVisual.closedToLeft = Boolean(splitClosedSelectedTab?.textContent?.includes("smoke.csv"));
         const restoredQuickOpenTab = Array.from(document.querySelectorAll("[role='tab']")).find((tab) =>
           tab.textContent?.includes("smoke-tab-07.csv")
         );
@@ -1248,6 +1252,7 @@ async function runSmokeTestWhenLoaded(window) {
       result.split.scrollable.after.scrollLeft <= 0 ||
       !result.split.rightActive ||
       !result.split.findScopedToRight ||
+      !result.split.closedToLeft ||
       !result.split.ratioChanged ||
       !result.split.leftRect ||
       !result.split.rightRect ||
