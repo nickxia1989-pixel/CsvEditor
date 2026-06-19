@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("csvDesktop", {
   closeWindow: () => ipcRenderer.invoke("csv:window-close"),
   getFavorites: () => ipcRenderer.invoke("csv:favorites-get"),
   setFavorites: (favorites) => ipcRenderer.invoke("csv:favorites-set", favorites),
+  getWorkspaceState: () => ipcRenderer.invoke("csv:workspace-get"),
+  setWorkspaceState: (workspace) => ipcRenderer.invoke("csv:workspace-set", workspace),
   onWindowStateChange: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on("csv:window-state", listener);

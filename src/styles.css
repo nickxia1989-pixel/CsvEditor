@@ -521,6 +521,105 @@ button:disabled {
   background: rgba(0, 0, 0, 0.08);
 }
 
+.tab-switcher-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: grid;
+  place-items: start center;
+  padding: max(54px, 9vh) 16px 16px;
+  pointer-events: none;
+  background: rgba(13, 27, 32, 0.08);
+  -webkit-app-region: no-drag;
+}
+
+.tab-switcher-panel {
+  display: grid;
+  width: min(640px, calc(100vw - 48px));
+  max-height: min(520px, calc(100vh - 96px));
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fbfcfc;
+  box-shadow: 0 18px 46px rgba(17, 31, 37, 0.22);
+  pointer-events: auto;
+}
+
+.tab-switcher-option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #263942;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tab-switcher-option:hover,
+.tab-switcher-option.selected {
+  border-color: #8fbfb9;
+  background: #e7f4f2;
+  color: var(--accent-strong);
+}
+
+.tab-switcher-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.tab-switcher-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  color: #16252d;
+  font-weight: 700;
+}
+
+.tab-switcher-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-switcher-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-switcher-current {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e5ecee;
+  color: #4c5f69;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tab-switcher-alert {
+  color: var(--danger);
+}
+
+.tab-switcher-dirty {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--warning);
+}
+
 .window-controls {
   display: flex;
   align-items: stretch;

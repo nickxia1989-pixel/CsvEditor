@@ -137,6 +137,45 @@ export function mergeLoadedNodeState(current: TreeNode, loaded: TreeNode): TreeN
   };
 }
 
+export async function reloadLoadedLocalTree(node: TreeNode): Promise<TreeNode> {
+  if (node.kind !== "directory") {
+    return node;
+  }
+
+  try {
+    const currentChildren = new Map(node.children?.map((child) => [child.id, child]) ?? []);
+    const children = node.directoryHandle ? await loadLocalChildren(node) : node.children ?? [];
+    const reloadedChildren = await Promise.all(
+      children.map((child) => {
+        const existing = currentChildren.get(child.id);
+        if (child.kind !== "directory" || !existing) {
+          return Promise.resolve(child);
+        }
+        const nextChild = {
+          ...child,
+          expanded: existing.expanded ?? child.expanded,
+          loaded: existing.loaded,
+          children: existing.children
+        };
+        return existing.loaded ? reloadLoadedLocalTree(nextChild) : Promise.resolve(nextChild);
+      })
+    );
+    return {
+      ...node,
+      children: reloadedChildren,
+      loaded: true,
+      loading: false,
+      error: undefined
+    };
+  } catch (error) {
+    return {
+      ...node,
+      loading: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 export type SampleManifest = {
   name: string;
   files: Array<{ path: string; url: string }>;

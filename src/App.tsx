@@ -20,6 +20,7 @@ import {
 import { DirectoryPane } from "./components/DirectoryPane";
 import { COMMIT_ACTIVE_EDIT_EVENT, GridEditor } from "./components/GridEditor";
 import { TabStrip } from "./components/TabStrip";
+import { TabSwitcherOverlay } from "./components/TabSwitcherOverlay";
 import {
   maxColumnCount,
   parseCsvText,
@@ -35,6 +36,7 @@ import {
   canControlDesktopWindow,
   closeDesktopWindow,
   getDesktopWindowState,
+  loadWorkspaceState,
   loadFavoriteFiles,
   makeDesktopFileRef,
   canPickDirectory,
@@ -44,10 +46,12 @@ import {
   openSvnUpdate,
   pickDirectory,
   saveFavoriteFiles,
+  saveWorkspaceState,
   subscribeDesktopWindowState,
   toggleMaximizeDesktopWindow,
   versionEquals,
   type DesktopWindowState,
+  type DirectoryHandle,
   type CsvFileRef
 } from "./lib/fileRefs";
 import {
@@ -67,6 +71,14 @@ import {
 } from "./lib/gridOps";
 import { clearHistory, pushUndo, redoTab, undoTab } from "./lib/history";
 import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion, reloadTabFromFileRef } from "./lib/tabModel";
+import {
+  advanceTabSwitcherSession,
+  startTabSwitcherSession,
+  updateRecentTabIds,
+  type TabSwitchDirection,
+  type TabSwitcherModifierKey,
+  type TabSwitcherSession
+} from "./lib/tabSwitcher";
 import { encodeTextBuffer } from "./lib/textDecode";
 import {
   createLocalRoot,
@@ -74,6 +86,7 @@ import {
   loadLocalChildren,
   loadLocalDescendants,
   mergeLoadedNodeState,
+  reloadLoadedLocalTree,
   updateNode
 } from "./lib/tree";
 import type {
@@ -83,6 +96,8 @@ import type {
   CsvColumnFilters,
   CsvFavoriteFile,
   CsvFindSnapshot,
+  CsvWorkspaceFile,
+  CsvWorkspaceState,
   CsvTab,
   FindResultCell,
   GridScrollPosition,
@@ -109,6 +124,10 @@ type SaveResult = "saved" | "skipped" | "blocked";
 type SaveOptions = {
   quiet?: boolean;
 };
+type OpenFileOptions = {
+  activate?: boolean;
+  quiet?: boolean;
+};
 
 export function App() {
   const [root, setRoot] = useState<TreeNode | null>(null);
@@ -122,9 +141,16 @@ export function App() {
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [activeEditDraftDirty, setActiveEditDraftDirty] = useState(false);
   const [desktopWindowState, setDesktopWindowState] = useState<DesktopWindowState>(DEFAULT_DESKTOP_WINDOW_STATE);
+  const [tabSwitcher, setTabSwitcher] = useState<TabSwitcherSession | null>(null);
+  const [workspaceStateLoaded, setWorkspaceStateLoaded] = useState(false);
+  const rootRef = useRef(root);
   const tabsRef = useRef(tabs);
   const activeEditDraftDirtyRef = useRef(activeEditDraftDirty);
   const activeTabIdRef = useRef(activeTabId);
+  const recentTabIdsRef = useRef<string[]>([]);
+  const tabSwitcherRef = useRef<TabSwitcherSession | null>(null);
+  const restoringWorkspaceRef = useRef(false);
+  const workspacePersistSnapshotRef = useRef("");
   const tabScrollPositionsRef = useRef<Record<string, GridScrollPosition>>({});
   const pollBusyRef = useRef(false);
   const openingPathsRef = useRef(new Set<string>());
@@ -136,8 +162,13 @@ export function App() {
   const desktopWindowControlsAvailable = canControlDesktopWindow();
 
   useEffect(() => {
+    rootRef.current = root;
+  }, [root]);
+
+  useEffect(() => {
     tabsRef.current = tabs;
-  }, [tabs]);
+    recentTabIdsRef.current = updateRecentTabIds(recentTabIdsRef.current, tabs, activeTabId);
+  }, [activeTabId, tabs]);
 
   useEffect(() => {
     activeEditDraftDirtyRef.current = activeEditDraftDirty;
@@ -163,6 +194,16 @@ export function App() {
     [activeEditDraftDirty, activeTabId, tabs]
   );
   const dirtyCount = tabs.filter((tab) => tab.dirty).length + (activeEditDraftDirty && activeTab && !activeTab.dirty ? 1 : 0);
+  const tabSwitcherTabs = useMemo(() => {
+    if (!tabSwitcher) {
+      return [];
+    }
+    const tabsById = new Map(visibleTabs.map((tab) => [tab.id, tab]));
+    return tabSwitcher.order.flatMap((id) => {
+      const tab = tabsById.get(id);
+      return tab ? [tab] : [];
+    });
+  }, [tabSwitcher, visibleTabs]);
 
   useEffect(() => {
     setActiveEditDraftDirty(false);
@@ -232,26 +273,132 @@ export function App() {
     window.setTimeout(action, 0);
   }, []);
 
+  const replaceTabSwitcher = useCallback((next: TabSwitcherSession | null) => {
+    tabSwitcherRef.current = next;
+    setTabSwitcher(next);
+  }, []);
+
+  const cycleTabSwitcher = useCallback(
+    (direction: TabSwitchDirection, modifierKey: TabSwitcherModifierKey) => {
+      const current = tabSwitcherRef.current;
+      const next = current
+        ? advanceTabSwitcherSession(current, direction)
+        : startTabSwitcherSession(
+            tabsRef.current,
+            activeTabIdRef.current,
+            recentTabIdsRef.current,
+            direction,
+            modifierKey
+          );
+      replaceTabSwitcher(next);
+    },
+    [replaceTabSwitcher]
+  );
+
+  const highlightTabSwitcherTab = useCallback(
+    (id: string) => {
+      const current = tabSwitcherRef.current;
+      if (!current || current.selectedTabId === id || !current.order.includes(id)) {
+        return;
+      }
+      replaceTabSwitcher({ ...current, selectedTabId: id });
+    },
+    [replaceTabSwitcher]
+  );
+
+  const selectTabSwitcherEdge = useCallback(
+    (edge: "first" | "last") => {
+      const current = tabSwitcherRef.current;
+      if (!current || current.order.length === 0) {
+        return;
+      }
+      replaceTabSwitcher({
+        ...current,
+        selectedTabId: edge === "first" ? current.order[0] : current.order[current.order.length - 1]
+      });
+    },
+    [replaceTabSwitcher]
+  );
+
+  const cancelTabSwitcher = useCallback(() => {
+    replaceTabSwitcher(null);
+  }, [replaceTabSwitcher]);
+
+  const commitTabSwitcher = useCallback(
+    (explicitTabId?: string) => {
+      const current = tabSwitcherRef.current;
+      if (!current) {
+        return;
+      }
+      const targetTabId = explicitTabId ?? current.selectedTabId;
+      replaceTabSwitcher(null);
+      if (!targetTabId || targetTabId === activeTabIdRef.current) {
+        return;
+      }
+      if (!tabsRef.current.some((tab) => tab.id === targetTabId)) {
+        return;
+      }
+      runAfterActiveEditCommit(() => setActiveTabId(targetTabId));
+    },
+    [replaceTabSwitcher, runAfterActiveEditCommit]
+  );
+
   const rememberTabScrollPosition = useCallback((tabId: string, position: GridScrollPosition) => {
     tabScrollPositionsRef.current[tabId] = position;
+  }, []);
+
+  const loadDirectoryHandle = useCallback(async (handle: DirectoryHandle): Promise<TreeNode> => {
+    const nextRoot = createLocalRoot(handle);
+    setRoot({ ...nextRoot, loading: true });
+    const children = await loadLocalChildren(nextRoot);
+    const loadedRoot: TreeNode = {
+      ...nextRoot,
+      children,
+      loaded: true,
+      loading: false
+    };
+    setRoot(loadedRoot);
+    return loadedRoot;
   }, []);
 
   const patchTab = useCallback((id: string, updater: (tab: CsvTab) => CsvTab) => {
     setTabs((current) => current.map((tab) => (tab.id === id ? updater(tab) : tab)));
   }, []);
 
+  useEffect(() => {
+    const current = tabSwitcherRef.current;
+    if (!current) {
+      return;
+    }
+    const openIds = new Set(tabs.map((tab) => tab.id));
+    const order = current.order.filter((id) => openIds.has(id));
+    if (order.length < 2 || !openIds.has(current.originTabId)) {
+      replaceTabSwitcher(null);
+      return;
+    }
+    const selectedTabId = order.includes(current.selectedTabId) ? current.selectedTabId : order[0];
+    if (selectedTabId !== current.selectedTabId || order.length !== current.order.length) {
+      replaceTabSwitcher({ ...current, order, selectedTabId });
+    }
+  }, [replaceTabSwitcher, tabs]);
+
   const openFileRef = useCallback(
-    async (fileRef: CsvFileRef) => {
-      pendingActivatePathRef.current = fileRef.path;
+    async (fileRef: CsvFileRef, options: OpenFileOptions = {}) => {
+      const shouldActivate = options.activate ?? true;
+      if (shouldActivate) {
+        pendingActivatePathRef.current = fileRef.path;
+      }
       const existing = tabsRef.current.find((tab) => tab.path === fileRef.path);
       if (existing) {
-        setActiveTabId(existing.id);
+        if (shouldActivate) {
+          setActiveTabId(existing.id);
+        }
         return;
       }
       if (openingPathsRef.current.has(fileRef.path)) {
         window.setTimeout(() => {
           const opened = tabsRef.current.find((tab) => tab.path === fileRef.path);
-          if (opened && pendingActivatePathRef.current === fileRef.path) {
+          if (shouldActivate && opened && pendingActivatePathRef.current === fileRef.path) {
             setActiveTabId(opened.id);
           }
         }, 0);
@@ -263,10 +410,12 @@ export function App() {
         const id = createTabId();
         const tab = await createTabFromFileRef(fileRef, id);
         setTabs((current) => [...current, tab]);
-        if (pendingActivatePathRef.current === fileRef.path) {
+        if (shouldActivate && pendingActivatePathRef.current === fileRef.path) {
           setActiveTabId(id);
         }
-        notify("success", `已打开 ${fileRef.name}`);
+        if (!options.quiet) {
+          notify("success", `已打开 ${fileRef.name}`);
+        }
       } catch (error) {
         notify("error", error instanceof Error ? error.message : String(error));
       } finally {
@@ -279,20 +428,100 @@ export function App() {
   const handlePickDirectory = useCallback(async () => {
     try {
       const handle = await pickDirectory();
-      const nextRoot = createLocalRoot(handle);
-      setRoot({ ...nextRoot, loading: true });
-      const children = await loadLocalChildren(nextRoot);
-      setRoot({
-        ...nextRoot,
-        children,
-        loaded: true,
-        loading: false
-      });
+      await loadDirectoryHandle(handle);
+      setWorkspaceStateLoaded(true);
       notify("success", `已载入目录 ${handle.name}`);
     } catch (error) {
       notify("error", error instanceof Error ? error.message : String(error));
     }
-  }, [notify]);
+  }, [loadDirectoryHandle, notify]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const workspace = await loadWorkspaceState();
+        if (cancelled) {
+          return;
+        }
+        if (!workspace) {
+          setWorkspaceStateLoaded(true);
+          return;
+        }
+
+        restoringWorkspaceRef.current = true;
+        const handle: DirectoryHandle = {
+          source: "desktop",
+          kind: "directory",
+          name: workspace.directory.name,
+          path: workspace.directory.path
+        };
+        await loadDirectoryHandle(handle);
+        if (cancelled) {
+          return;
+        }
+
+        const activePath = workspace.activeFilePath ?? workspace.openFiles[0]?.path ?? null;
+        for (const file of workspace.openFiles) {
+          if (cancelled) {
+            return;
+          }
+          await openFileRef(
+            makeDesktopFileRef({
+              kind: "file",
+              name: file.name,
+              path: file.path
+            }),
+            {
+              activate: file.path === activePath,
+              quiet: true
+            }
+          );
+        }
+
+        if (workspace.openFiles.length > 0) {
+          notify("success", `已恢复目录 ${workspace.directory.name}，打开 ${workspace.openFiles.length} 个表格`);
+        } else {
+          notify("success", `已恢复目录 ${workspace.directory.name}`);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          notify("warning", `恢复上次工作区失败：${error instanceof Error ? error.message : String(error)}`);
+        }
+      } finally {
+        if (!cancelled) {
+          restoringWorkspaceRef.current = false;
+          setWorkspaceStateLoaded(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadDirectoryHandle, notify, openFileRef]);
+
+  useEffect(() => {
+    if (!workspaceStateLoaded || restoringWorkspaceRef.current) {
+      return;
+    }
+
+    const workspace = buildWorkspaceState(root, tabs, activeTabId);
+    if (!workspace) {
+      return;
+    }
+
+    const serialized = JSON.stringify(workspace);
+    if (serialized === workspacePersistSnapshotRef.current) {
+      return;
+    }
+    workspacePersistSnapshotRef.current = serialized;
+
+    void saveWorkspaceState(workspace).catch((error) => {
+      notify("error", error instanceof Error ? error.message : String(error));
+    });
+  }, [activeTabId, notify, root, tabs, workspaceStateLoaded]);
 
   const handleSvnCommit = useCallback(async () => {
     if (!root?.directoryHandle || !isDesktopDirectoryHandle(root.directoryHandle)) {
@@ -435,6 +664,15 @@ export function App() {
     setFavoriteFiles((current) => current.filter((item) => item.path !== favorite.path));
   }, []);
 
+  const refreshDirectoryTree = useCallback(async () => {
+    const currentRoot = rootRef.current;
+    if (!currentRoot) {
+      return;
+    }
+    const reloadedRoot = await reloadLoadedLocalTree(currentRoot);
+    setRoot((current) => (current?.id === reloadedRoot.id ? reloadedRoot : current));
+  }, []);
+
   const reloadTabFromDisk = useCallback(
     async (id: string, force = false) => {
       const tab = tabsRef.current.find((current) => current.id === id);
@@ -471,6 +709,14 @@ export function App() {
       }
     },
     [notify, patchTab]
+  );
+
+  const reloadActiveTabAndDirectoryTree = useCallback(
+    async (id: string) => {
+      await reloadTabFromDisk(id);
+      await refreshDirectoryTree();
+    },
+    [refreshDirectoryTree, reloadTabFromDisk]
   );
 
   const saveTab = useCallback(
@@ -611,14 +857,87 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && activeTabId) {
+      if (event.key === "Tab" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
-        runAfterActiveEditCommit(() => void saveTab(activeTabId));
+        event.stopPropagation();
+        cycleTabSwitcher(event.shiftKey ? "previous" : "next", event.metaKey && !event.ctrlKey ? "meta" : "control");
+        return;
+      }
+
+      if (tabSwitcherRef.current) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelTabSwitcher();
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          commitTabSwitcher();
+          return;
+        }
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          event.stopPropagation();
+          cycleTabSwitcher("next", tabSwitcherRef.current.modifierKey);
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          event.stopPropagation();
+          cycleTabSwitcher("previous", tabSwitcherRef.current.modifierKey);
+          return;
+        }
+        if (event.key === "Home") {
+          event.preventDefault();
+          event.stopPropagation();
+          selectTabSwitcherEdge("first");
+          return;
+        }
+        if (event.key === "End") {
+          event.preventDefault();
+          event.stopPropagation();
+          selectTabSwitcherEdge("last");
+          return;
+        }
+      }
+
+      const activeId = activeTabIdRef.current;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && activeId) {
+        event.preventDefault();
+        runAfterActiveEditCommit(() => void saveTab(activeId));
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTabId, runAfterActiveEditCommit, saveTab]);
+    const onKeyUp = (event: KeyboardEvent) => {
+      const current = tabSwitcherRef.current;
+      if (!current || !isTabSwitcherModifierRelease(event, current.modifierKey)) {
+        return;
+      }
+      event.preventDefault();
+      commitTabSwitcher();
+    };
+    const onBlur = () => {
+      if (tabSwitcherRef.current) {
+        commitTabSwitcher();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [
+    cancelTabSwitcher,
+    commitTabSwitcher,
+    cycleTabSwitcher,
+    runAfterActiveEditCommit,
+    saveTab,
+    selectTabSwitcherEdge
+  ]);
 
   useEffect(() => {
     const interval = window.setInterval(async () => {
@@ -784,7 +1103,7 @@ export function App() {
         onPickDirectory={handlePickDirectory}
         onSvnCommit={handleSvnCommit}
         onSvnUpdate={handleSvnUpdate}
-        onReloadActive={() => activeTabId && runAfterActiveEditCommit(() => void reloadTabFromDisk(activeTabId))}
+        onReloadActive={() => activeTabId && runAfterActiveEditCommit(() => void reloadActiveTabAndDirectoryTree(activeTabId))}
         onSaveActive={() => activeTabId && runAfterActiveEditCommit(() => void saveTab(activeTabId))}
         onSaveAll={() => runAfterActiveEditCommit(() => void saveAllDirtyTabs())}
         onToggleDirectory={handleToggleDirectory}
@@ -1375,6 +1694,15 @@ export function App() {
           </div>
         )}
       </main>
+      {tabSwitcher ? (
+        <TabSwitcherOverlay
+          tabs={tabSwitcherTabs}
+          selectedTabId={tabSwitcher.selectedTabId}
+          originTabId={tabSwitcher.originTabId}
+          onHighlight={highlightTabSwitcherTab}
+          onSelect={commitTabSwitcher}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1394,6 +1722,52 @@ function createTabId(): string {
     return crypto.randomUUID();
   }
   return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isTabSwitcherModifierRelease(event: KeyboardEvent, modifierKey: TabSwitcherModifierKey): boolean {
+  return modifierKey === "meta" ? event.key === "Meta" : event.key === "Control";
+}
+
+function buildWorkspaceState(root: TreeNode | null, tabs: CsvTab[], activeTabId: string | null): CsvWorkspaceState | null {
+  if (!root?.directoryHandle || !isDesktopDirectoryHandle(root.directoryHandle)) {
+    return null;
+  }
+
+  const directory = {
+    name: root.name,
+    path: root.path,
+    source: "local" as const
+  };
+  const openFiles = tabs.flatMap((tab): CsvWorkspaceFile[] => {
+    if (tab.fileRef.source !== "local" || !isPathInsideDirectory(tab.path, root.path)) {
+      return [];
+    }
+    return [
+      {
+        name: tab.name,
+        path: tab.path,
+        source: "local"
+      }
+    ];
+  });
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const activeFilePath =
+    activeTab && openFiles.some((file) => file.path === activeTab.path) ? activeTab.path : openFiles[0]?.path ?? null;
+  return {
+    directory,
+    openFiles,
+    activeFilePath
+  };
+}
+
+function isPathInsideDirectory(filePath: string, directoryPath: string): boolean {
+  const normalizedFile = normalizePathForComparison(filePath);
+  const normalizedDirectory = normalizePathForComparison(directoryPath);
+  return normalizedFile === normalizedDirectory || normalizedFile.startsWith(`${normalizedDirectory}/`);
+}
+
+function normalizePathForComparison(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }
 
 function clampSelectionToData(selection: CsvTab["selection"], data: CsvTab["data"]): CsvTab["selection"] {

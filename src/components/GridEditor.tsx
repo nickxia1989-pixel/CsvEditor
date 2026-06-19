@@ -1220,6 +1220,9 @@ export function GridEditor({
       }
       return;
     }
+    if (event.key === "Tab" && (event.ctrlKey || event.metaKey)) {
+      return;
+    }
     if (event.key === "Tab") {
       event.preventDefault();
       moveSelection(0, event.shiftKey ? -1 : 1, false);

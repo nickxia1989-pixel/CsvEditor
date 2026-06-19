@@ -39,6 +39,10 @@ function getFavoritesPath() {
   return path.join(app.getPath("userData"), "favorites.json");
 }
 
+function getWorkspacePath() {
+  return path.join(app.getPath("userData"), "workspace.json");
+}
+
 function sanitizeFavorites(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -89,6 +93,124 @@ async function writeFavorites(favorites) {
   await fs.mkdir(path.dirname(getFavoritesPath()), { recursive: true });
   await fs.writeFile(getFavoritesPath(), `${JSON.stringify(sanitized, null, 2)}\n`, "utf8");
   authorizeFavoriteRoots(sanitized);
+  return sanitized;
+}
+
+function sanitizeWorkspace(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const rawDirectory = value.directory;
+  if (!rawDirectory || typeof rawDirectory !== "object") {
+    return null;
+  }
+  const directoryPath = typeof rawDirectory.path === "string" ? rawDirectory.path.trim() : "";
+  if (!directoryPath || !path.isAbsolute(directoryPath)) {
+    return null;
+  }
+  const directory = {
+    name: typeof rawDirectory.name === "string" && rawDirectory.name.trim() ? rawDirectory.name.trim() : path.basename(directoryPath),
+    path: path.resolve(directoryPath),
+    source: "local"
+  };
+
+  const seen = new Set();
+  const openFiles = [];
+  if (Array.isArray(value.openFiles)) {
+    for (const item of value.openFiles) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const filePath = typeof item.path === "string" ? item.path.trim() : "";
+      if (!filePath || !path.isAbsolute(filePath)) {
+        continue;
+      }
+      const resolvedFilePath = path.resolve(filePath);
+      if (
+        seen.has(resolvedFilePath) ||
+        !isPathInsideRoot(resolvedFilePath, directory.path) ||
+        !resolvedFilePath.toLowerCase().endsWith(".csv")
+      ) {
+        continue;
+      }
+      seen.add(resolvedFilePath);
+      openFiles.push({
+        name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : path.basename(resolvedFilePath),
+        path: resolvedFilePath,
+        source: "local"
+      });
+    }
+  }
+
+  const activeFilePath =
+    typeof value.activeFilePath === "string" && openFiles.some((file) => file.path === path.resolve(value.activeFilePath))
+      ? path.resolve(value.activeFilePath)
+      : null;
+
+  return {
+    directory,
+    openFiles,
+    activeFilePath
+  };
+}
+
+async function readWorkspace() {
+  try {
+    const text = await fs.readFile(getWorkspacePath(), "utf8");
+    const workspace = sanitizeWorkspace(JSON.parse(text));
+    if (!workspace) {
+      return null;
+    }
+
+    const directoryStat = await fs.stat(workspace.directory.path);
+    if (!directoryStat.isDirectory()) {
+      return null;
+    }
+    addAllowedRoot(workspace.directory.path);
+
+    const openFiles = [];
+    for (const file of workspace.openFiles) {
+      try {
+        const fileStat = await fs.stat(file.path);
+        if (fileStat.isFile()) {
+          openFiles.push(file);
+        }
+      } catch (error) {
+        if (!error || error.code !== "ENOENT") {
+          throw error;
+        }
+      }
+    }
+
+    return {
+      ...workspace,
+      openFiles,
+      activeFilePath: openFiles.some((file) => file.path === workspace.activeFilePath) ? workspace.activeFilePath : null
+    };
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function writeWorkspace(workspace) {
+  if (!workspace) {
+    await fs.rm(getWorkspacePath(), { force: true });
+    return null;
+  }
+
+  const sanitized = sanitizeWorkspace(workspace);
+  if (!sanitized) {
+    await fs.rm(getWorkspacePath(), { force: true });
+    return null;
+  }
+
+  addAllowedRoot(sanitized.directory.path);
+  await fs.mkdir(path.dirname(getWorkspacePath()), { recursive: true });
+  await fs.writeFile(getWorkspacePath(), `${JSON.stringify(sanitized, null, 2)}\n`, "utf8");
   return sanitized;
 }
 
@@ -807,6 +929,8 @@ ipcMain.handle("csv:window-close", (event) => {
 });
 ipcMain.handle("csv:favorites-get", () => readFavorites());
 ipcMain.handle("csv:favorites-set", (_event, favorites) => writeFavorites(favorites));
+ipcMain.handle("csv:workspace-get", () => readWorkspace());
+ipcMain.handle("csv:workspace-set", (_event, workspace) => writeWorkspace(workspace));
 
 if (process.env.CSV_EDITOR_ALLOWED_ROOTS) {
   for (const root of process.env.CSV_EDITOR_ALLOWED_ROOTS.split(path.delimiter)) {

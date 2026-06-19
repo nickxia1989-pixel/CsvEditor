@@ -62,6 +62,10 @@ class MockDirectoryHandle implements BrowserDirectoryHandle {
     this.children = children;
   }
 
+  setChildren(children: Array<[string, BrowserFileHandle | BrowserDirectoryHandle]>): void {
+    this.children = children;
+  }
+
   async *entries(): AsyncIterableIterator<[string, BrowserFileHandle | BrowserDirectoryHandle]> {
     for (const child of this.children) {
       yield child;
@@ -186,6 +190,95 @@ describe("App local directory flow", () => {
 
     await waitFor(() => expect(api.readFile).toHaveBeenCalledWith("C:\\Tables\\desktop-favorite.csv"));
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
+  });
+
+  it("restores the last desktop directory and previously opened tables on startup", async () => {
+    const files = new Map([
+      ["C:\\Tables\\first.csv", "ID,Name\n1,Alpha"],
+      ["C:\\Tables\\second.csv", "ID,Name\n2,Beta"]
+    ]);
+    const api: CsvDesktopApi = {
+      pickDirectory: vi.fn(),
+      listDirectory: vi.fn(async () => [
+        { kind: "file" as const, name: "first.csv", path: "C:\\Tables\\first.csv" },
+        { kind: "file" as const, name: "second.csv", path: "C:\\Tables\\second.csv" }
+      ]),
+      readFile: vi.fn(async (filePath: string) => ({
+        data: new TextEncoder().encode(files.get(filePath) ?? "ID,Name\n0,Missing"),
+        version: { lastModified: 1, size: files.get(filePath)?.length ?? 0 }
+      })),
+      writeFile: vi.fn(),
+      getVersion: vi.fn(),
+      getWorkspaceState: vi.fn(async () => ({
+        directory: { name: "Tables", path: "C:\\Tables", source: "local" as const },
+        openFiles: [
+          { name: "first.csv", path: "C:\\Tables\\first.csv", source: "local" as const },
+          { name: "second.csv", path: "C:\\Tables\\second.csv", source: "local" as const }
+        ],
+        activeFilePath: "C:\\Tables\\second.csv"
+      })),
+      setWorkspaceState: vi.fn(async (workspace) => workspace)
+    };
+    Object.defineProperty(window, "csvDesktop", {
+      configurable: true,
+      value: api
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("tab", { name: "first.csv" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "first.csv" })).toBeInTheDocument();
+    expect(api.pickDirectory).not.toHaveBeenCalled();
+    expect(api.listDirectory).toHaveBeenCalledWith("C:\\Tables");
+    expect(api.readFile).toHaveBeenCalledWith("C:\\Tables\\first.csv");
+    expect(api.readFile).toHaveBeenCalledWith("C:\\Tables\\second.csv");
+  });
+
+  it("persists the current desktop directory and its open tables", async () => {
+    const api: CsvDesktopApi = {
+      pickDirectory: vi.fn(async () => ({
+        source: "desktop" as const,
+        kind: "directory" as const,
+        name: "Tables",
+        path: "C:\\Tables"
+      })),
+      listDirectory: vi.fn(async () => [
+        { kind: "file" as const, name: "first.csv", path: "C:\\Tables\\first.csv" },
+        { kind: "file" as const, name: "second.csv", path: "C:\\Tables\\second.csv" }
+      ]),
+      readFile: vi.fn(async (filePath: string) => ({
+        data: new TextEncoder().encode(filePath.includes("second") ? "ID,Name\n2,Beta" : "ID,Name\n1,Alpha"),
+        version: { lastModified: 1, size: 15 }
+      })),
+      writeFile: vi.fn(),
+      getVersion: vi.fn(),
+      getWorkspaceState: vi.fn(async () => null),
+      setWorkspaceState: vi.fn(async (workspace) => workspace)
+    };
+    Object.defineProperty(window, "csvDesktop", {
+      configurable: true,
+      value: api
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    await waitFor(() =>
+      expect(api.setWorkspaceState).toHaveBeenCalledWith({
+        directory: { name: "Tables", path: "C:\\Tables", source: "local" },
+        openFiles: [
+          { name: "first.csv", path: "C:\\Tables\\first.csv", source: "local" },
+          { name: "second.csv", path: "C:\\Tables\\second.csv", source: "local" }
+        ],
+        activeFilePath: "C:\\Tables\\second.csv"
+      })
+    );
   });
 
   it("auto refreshes a clean tab when the disk version changes", async () => {
@@ -1014,6 +1107,147 @@ describe("App local directory flow", () => {
     expect(grid.scrollLeft).toBe(60);
   });
 
+  it("cycles opened tables with a floating Ctrl+Tab switcher in recent order", async () => {
+    const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
+    const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");
+    const third = new MockFileHandle("third.csv", "ID,Name\n3,Gamma");
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", first],
+      ["second.csv", second],
+      ["third.csv", third]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "third.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "third.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+
+    const switcher = await screen.findByRole("listbox", { name: "打开的表格" });
+    expect(within(switcher).getByRole("option", { name: /second\.csv/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(switcher).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      expect.stringContaining("third.csv"),
+      expect.stringContaining("second.csv"),
+      expect.stringContaining("first.csv")
+    ]);
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(within(switcher).getByRole("option", { name: /first\.csv/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyUp(window, { key: "Control" });
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.queryByRole("listbox", { name: "打开的表格" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true, shiftKey: true });
+    const reverseSwitcher = await screen.findByRole("listbox", { name: "打开的表格" });
+    expect(within(reverseSwitcher).getByRole("option", { name: /second\.csv/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyUp(window, { key: "Control" });
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+  });
+
+  it("cancels the Ctrl+Tab switcher without changing the active table", async () => {
+    const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
+    const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", first],
+      ["second.csv", second]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    expect(await screen.findByRole("listbox", { name: "打开的表格" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.queryByRole("listbox", { name: "打开的表格" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("commits an active inline editor before Ctrl+Tab switches tables", async () => {
+    const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
+    const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", first],
+      ["second.csv", second]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "second.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("tab", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "first.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Ctrl Tab Draft" } });
+
+    fireEvent.keyDown(window, { key: "Tab", ctrlKey: true });
+    fireEvent.keyUp(window, { key: "Control" });
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("tab", { name: "first.csv未保存" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "first.csv未保存" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("Ctrl Tab Draft"));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(screen.getByText("未保存 0")).toBeInTheDocument());
+    expect(first.getText()).toBe("Ctrl Tab Draft,Name\n1,Alpha");
+  });
+
+  it("does not move the selected cell when Ctrl+Tab is pressed with only one open table", async () => {
+    const file = new MockFileHandle("single.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["single.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "single.csv" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("A"));
+
+    fireEvent.keyDown(screen.getByRole("grid", { name: "CSV grid" }), { key: "Tab", ctrlKey: true });
+
+    expect(screen.queryByRole("listbox", { name: "打开的表格" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("A");
+  });
+
   it("keeps a dirty tab open when close confirmation is cancelled", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const file = new MockFileHandle("close-safe.csv", "ID,Name\n1,Alpha");
@@ -1324,6 +1558,33 @@ describe("App local directory flow", () => {
     await waitFor(() => expect(screen.getByText("2 行 / 1 列 / UTF-8")).toBeInTheDocument());
     expect(screen.getByText("A2")).toBeInTheDocument();
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("Row");
+  });
+
+  it("refreshes the left directory tree when reloading the active CSV", async () => {
+    const current = new MockFileHandle("current.csv", "A,B\n1,2");
+    const added = new MockFileHandle("added.csv", "A,B\n3,4");
+    const root = new MockDirectoryHandle("Tables", [["current.csv", current]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "current.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "current.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.queryByRole("button", { name: "added.csv" })).not.toBeInTheDocument();
+
+    root.setChildren([
+      ["extra", new MockDirectoryHandle("extra", [])],
+      ["current.csv", current],
+      ["added.csv", added]
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "added.csv" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "extra" })).toBeInTheDocument();
   });
 
   it("keeps local dirty edits when manual refresh is cancelled", async () => {

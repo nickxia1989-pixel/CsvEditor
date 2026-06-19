@@ -59,6 +59,24 @@ export type CsvFavoriteFile = {
   source: CsvFileRef["source"];
 };
 
+export type CsvWorkspaceDirectory = {
+  name: string;
+  path: string;
+  source: "local";
+};
+
+export type CsvWorkspaceFile = {
+  name: string;
+  path: string;
+  source: "local";
+};
+
+export type CsvWorkspaceState = {
+  directory: CsvWorkspaceDirectory;
+  openFiles: CsvWorkspaceFile[];
+  activeFilePath: string | null;
+};
+
 export type CsvTab = {
   id: string;
   name: string;

@@ -1,5 +1,5 @@
 import { decodeTextBuffer } from "./textDecode";
-import type { CsvFavoriteFile } from "../types";
+import type { CsvFavoriteFile, CsvWorkspaceState } from "../types";
 
 export type CsvWritableData = Uint8Array;
 
@@ -69,6 +69,8 @@ export type CsvDesktopApi = {
   closeWindow?(): Promise<void>;
   getFavorites?(): Promise<CsvFavoriteFile[]>;
   setFavorites?(favorites: CsvFavoriteFile[]): Promise<CsvFavoriteFile[]>;
+  getWorkspaceState?(): Promise<CsvWorkspaceState | null>;
+  setWorkspaceState?(workspace: CsvWorkspaceState | null): Promise<CsvWorkspaceState | null>;
   onWindowStateChange?(callback: (state: DesktopWindowState) => void): () => void;
 };
 
@@ -195,6 +197,18 @@ export async function saveFavoriteFiles(favorites: CsvFavoriteFile[]): Promise<C
     window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(sanitized));
   }
   return sanitized;
+}
+
+export async function loadWorkspaceState(): Promise<CsvWorkspaceState | null> {
+  return (await getDesktopApi()?.getWorkspaceState?.()) ?? null;
+}
+
+export async function saveWorkspaceState(workspace: CsvWorkspaceState | null): Promise<CsvWorkspaceState | null> {
+  const desktop = getDesktopApi();
+  if (!desktop?.setWorkspaceState) {
+    return workspace;
+  }
+  return desktop.setWorkspaceState(workspace);
 }
 
 export function subscribeDesktopWindowState(callback: (state: DesktopWindowState) => void): () => void {
