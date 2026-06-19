@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { DirectoryPane } from "./components/DirectoryPane";
 import { COMMIT_ACTIVE_EDIT_EVENT, GridEditor } from "./components/GridEditor";
+import { QuickOpenOverlay } from "./components/QuickOpenOverlay";
 import { TabStrip } from "./components/TabStrip";
 import { TabSwitcherOverlay } from "./components/TabSwitcherOverlay";
 import {
@@ -69,6 +70,7 @@ import {
   shiftLockedCellsForInsertedRows
 } from "./lib/gridOps";
 import { clearHistory, pushUndo, redoTab, undoTab } from "./lib/history";
+import { buildQuickOpenCandidates, type QuickOpenCandidate } from "./lib/quickOpen";
 import { applyDiskVersionChange, createTabFromFileRef, getSaveConflictVersion, reloadTabFromFileRef } from "./lib/tabModel";
 import {
   advanceTabSwitcherSession,
@@ -127,6 +129,11 @@ type OpenFileOptions = {
   activate?: boolean;
   quiet?: boolean;
 };
+type QuickOpenState = {
+  query: string;
+  selectedId: string | null;
+  loading: boolean;
+};
 
 export function App() {
   const [root, setRoot] = useState<TreeNode | null>(null);
@@ -141,6 +148,7 @@ export function App() {
   const [activeEditDraftDirty, setActiveEditDraftDirty] = useState(false);
   const [desktopWindowState, setDesktopWindowState] = useState<DesktopWindowState>(DEFAULT_DESKTOP_WINDOW_STATE);
   const [tabSwitcher, setTabSwitcher] = useState<TabSwitcherSession | null>(null);
+  const [quickOpen, setQuickOpen] = useState<QuickOpenState | null>(null);
   const [workspaceStateLoaded, setWorkspaceStateLoaded] = useState(false);
   const rootRef = useRef(root);
   const tabsRef = useRef(tabs);
@@ -148,6 +156,8 @@ export function App() {
   const activeTabIdRef = useRef(activeTabId);
   const recentTabIdsRef = useRef<string[]>([]);
   const tabSwitcherRef = useRef<TabSwitcherSession | null>(null);
+  const quickOpenLoadSerialRef = useRef(0);
+  const quickOpenCandidatesRef = useRef<QuickOpenCandidate[]>([]);
   const restoringWorkspaceRef = useRef(false);
   const workspacePersistSnapshotRef = useRef("");
   const favoritePersistSnapshotRef = useRef("");
@@ -204,10 +214,32 @@ export function App() {
       return tab ? [tab] : [];
     });
   }, [tabSwitcher, visibleTabs]);
+  const quickOpenCandidates = useMemo(
+    () =>
+      quickOpen
+        ? buildQuickOpenCandidates(visibleTabs, root, quickOpen.query, recentTabIdsRef.current, activeTabId)
+        : [],
+    [activeTabId, quickOpen, root, visibleTabs]
+  );
 
   useEffect(() => {
     setActiveEditDraftDirty(false);
   }, [activeTabId]);
+
+  useEffect(() => {
+    quickOpenCandidatesRef.current = quickOpenCandidates;
+  }, [quickOpenCandidates]);
+
+  useEffect(() => {
+    if (!quickOpen) {
+      return;
+    }
+    const selectedStillVisible = quickOpenCandidates.some((candidate) => candidate.id === quickOpen.selectedId);
+    const nextSelectedId = selectedStillVisible ? quickOpen.selectedId : quickOpenCandidates[0]?.id ?? null;
+    if (nextSelectedId !== quickOpen.selectedId) {
+      setQuickOpen((current) => (current ? { ...current, selectedId: nextSelectedId } : current));
+    }
+  }, [quickOpen, quickOpenCandidates]);
 
   useEffect(() => {
     if (!desktopWindowControlsAvailable) {
@@ -356,6 +388,85 @@ export function App() {
     [replaceTabSwitcher, runAfterActiveEditCommit]
   );
 
+  const closeQuickOpen = useCallback(() => {
+    quickOpenLoadSerialRef.current += 1;
+    setQuickOpen(null);
+  }, []);
+
+  const openQuickOpen = useCallback(() => {
+    replaceTabSwitcher(null);
+    const currentRoot = rootRef.current;
+    const shouldLoadTree = Boolean(currentRoot && hasUnloadedLocalDirectory(currentRoot));
+    const loadSerial = quickOpenLoadSerialRef.current + 1;
+    quickOpenLoadSerialRef.current = loadSerial;
+    setQuickOpen({
+      query: "",
+      selectedId: null,
+      loading: shouldLoadTree
+    });
+
+    if (!currentRoot || !shouldLoadTree) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const loadedRoot = await loadLocalDescendants(currentRoot);
+        setRoot((current) => {
+          if (!current || current.id !== currentRoot.id) {
+            return current;
+          }
+          return mergeLoadedNodeState(current, loadedRoot);
+        });
+      } catch (error) {
+        notify("error", error instanceof Error ? error.message : String(error));
+      } finally {
+        setQuickOpen((current) =>
+          current && quickOpenLoadSerialRef.current === loadSerial ? { ...current, loading: false } : current
+        );
+      }
+    })();
+  }, [notify, replaceTabSwitcher]);
+
+  const updateQuickOpenQuery = useCallback((query: string) => {
+    setQuickOpen((current) => (current ? { ...current, query } : current));
+  }, []);
+
+  const highlightQuickOpenCandidate = useCallback((id: string) => {
+    setQuickOpen((current) => {
+      if (!current || current.selectedId === id || !quickOpenCandidatesRef.current.some((candidate) => candidate.id === id)) {
+        return current;
+      }
+      return { ...current, selectedId: id };
+    });
+  }, []);
+
+  const moveQuickOpenSelection = useCallback((delta: number) => {
+    setQuickOpen((current) => {
+      if (!current) {
+        return current;
+      }
+      const candidates = quickOpenCandidatesRef.current;
+      if (candidates.length === 0) {
+        return { ...current, selectedId: null };
+      }
+      const currentIndex = Math.max(0, candidates.findIndex((candidate) => candidate.id === current.selectedId));
+      const nextIndex = ((currentIndex + delta) % candidates.length + candidates.length) % candidates.length;
+      return { ...current, selectedId: candidates[nextIndex].id };
+    });
+  }, []);
+
+  const selectQuickOpenEdge = useCallback((edge: "first" | "last") => {
+    setQuickOpen((current) => {
+      if (!current) {
+        return current;
+      }
+      const candidates = quickOpenCandidatesRef.current;
+      const candidate = edge === "first" ? candidates[0] : candidates[candidates.length - 1];
+      return { ...current, selectedId: candidate?.id ?? null };
+    });
+  }, []);
+
   const rememberTabScrollPosition = useCallback((tabId: string, position: GridScrollPosition) => {
     tabScrollPositionsRef.current[tabId] = position;
   }, []);
@@ -436,6 +547,29 @@ export function App() {
       }
     },
     [notify]
+  );
+
+  const commitQuickOpenCandidate = useCallback(
+    (explicitId?: string) => {
+      const current = quickOpen;
+      if (!current) {
+        return;
+      }
+      const targetId = explicitId ?? current.selectedId;
+      const candidate = quickOpenCandidatesRef.current.find((item) => item.id === targetId);
+      closeQuickOpen();
+      if (!candidate) {
+        return;
+      }
+      runAfterActiveEditCommit(() => {
+        if (candidate.tabId && tabsRef.current.some((tab) => tab.id === candidate.tabId)) {
+          setActiveTabId(candidate.tabId);
+          return;
+        }
+        void openFileRef(candidate.fileRef);
+      });
+    },
+    [closeQuickOpen, openFileRef, quickOpen, runAfterActiveEditCommit]
   );
 
   const handlePickDirectory = useCallback(async () => {
@@ -883,6 +1017,13 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        event.stopPropagation();
+        openQuickOpen();
+        return;
+      }
+
       if (event.key === "Tab" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         event.stopPropagation();
@@ -960,6 +1101,7 @@ export function App() {
     cancelTabSwitcher,
     commitTabSwitcher,
     cycleTabSwitcher,
+    openQuickOpen,
     runAfterActiveEditCommit,
     saveTab,
     selectTabSwitcherEdge
@@ -1721,6 +1863,20 @@ export function App() {
           originTabId={tabSwitcher.originTabId}
           onHighlight={highlightTabSwitcherTab}
           onSelect={commitTabSwitcher}
+        />
+      ) : null}
+      {quickOpen ? (
+        <QuickOpenOverlay
+          query={quickOpen.query}
+          candidates={quickOpenCandidates}
+          selectedId={quickOpen.selectedId}
+          loading={quickOpen.loading}
+          onQueryChange={updateQuickOpenQuery}
+          onHighlight={highlightQuickOpenCandidate}
+          onMoveSelection={moveQuickOpenSelection}
+          onSelectEdge={selectQuickOpenEdge}
+          onOpen={commitQuickOpenCandidate}
+          onClose={closeQuickOpen}
         />
       ) : null}
     </div>

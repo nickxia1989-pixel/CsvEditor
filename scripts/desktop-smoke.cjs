@@ -82,6 +82,7 @@ async function main() {
         favorites: result.favorites,
         headerDrag: result.headerDrag,
         search: result.search,
+        quickOpen: result.quickOpen,
         windowControls: result.windowControls,
         regions: result.regions,
         layout: result.layout

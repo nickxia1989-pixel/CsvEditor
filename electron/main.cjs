@@ -491,6 +491,14 @@ async function runSmokeTestWhenLoaded(window) {
             ctrlKey: true
           }));
         };
+        const openQuickFilePicker = () => {
+          window.dispatchEvent(new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "p",
+            ctrlKey: true
+          }));
+        };
         const api = window.csvDesktop;
         if (!api) {
           throw new Error("csvDesktop preload API missing");
@@ -678,6 +686,47 @@ async function runSmokeTestWhenLoaded(window) {
         const findSummaryText = document.querySelector(".find-results-summary")?.textContent ?? "";
         toggleFindPanel();
         await waitFor(() => !document.querySelector(".find-side-panel"), "find side panel did not close");
+        openQuickFilePicker();
+        await waitFor(() => document.querySelector(".quick-open-panel"), "quick file picker did not open");
+        const quickOpenInput = document.querySelector("input[aria-label='快速打开文件']");
+        if (!quickOpenInput) {
+          throw new Error("quick file picker input missing");
+        }
+        setInputValue(quickOpenInput, "smoke-tab");
+        await waitFor(
+          () => Array.from(document.querySelectorAll(".quick-open-option")).some((option) => option.textContent?.includes("smoke-tab-07.csv")),
+          "quick file picker result missing"
+        );
+        const quickHoverTarget = Array.from(document.querySelectorAll(".quick-open-option")).find((option) =>
+          option.textContent?.includes("smoke-tab-07.csv")
+        );
+        if (!quickHoverTarget) {
+          throw new Error("quick file picker hover target missing");
+        }
+        quickHoverTarget.dispatchEvent(new MouseEvent("mousemove", {
+          bubbles: true,
+          cancelable: true,
+          clientX: quickHoverTarget.getBoundingClientRect().left + 10,
+          clientY: quickHoverTarget.getBoundingClientRect().top + 10
+        }));
+        await waitFor(
+          () => quickHoverTarget.classList.contains("selected"),
+          "quick file picker hover did not select result"
+        );
+        quickOpenInput.dispatchEvent(new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Enter"
+        }));
+        await waitFor(
+          () => Array.from(document.querySelectorAll("[role='tab']")).some((tab) => tab.getAttribute("aria-selected") === "true" && tab.textContent?.includes("smoke-tab-07.csv")),
+          "quick file picker did not open hovered file"
+        );
+        const quickOpenHoverSelected = quickHoverTarget.classList.contains("selected");
+        const quickOpenOpened = Array.from(document.querySelectorAll("[role='tab']")).some(
+          (tab) => tab.getAttribute("aria-selected") === "true" && tab.textContent?.includes("smoke-tab-07.csv")
+        );
+        const quickOpenClosed = !document.querySelector(".quick-open-panel");
         const columnHeaderB = document.querySelector("[role='columnheader'][aria-label='Column B']");
         const columnHeaderD = document.querySelector("[role='columnheader'][aria-label='Column D']");
         if (!columnHeaderB || !columnHeaderD) {
@@ -794,6 +843,11 @@ async function runSmokeTestWhenLoaded(window) {
             resultJumped: findResultJumped,
             panelClosed: !document.querySelector(".find-side-panel")
           },
+          quickOpen: {
+            hoverSelected: quickOpenHoverSelected,
+            opened: quickOpenOpened,
+            closed: quickOpenClosed
+          },
           savedVersion: saved.version
         };
       })();
@@ -876,6 +930,9 @@ async function runSmokeTestWhenLoaded(window) {
       !result.search.panelClosed
     ) {
       throw new Error(`桌面查找侧栏烟测不正确: ${JSON.stringify(result.search)}`);
+    }
+    if (!result.quickOpen?.hoverSelected || !result.quickOpen.opened || !result.quickOpen.closed) {
+      throw new Error(`桌面快速打开烟测不正确: ${JSON.stringify(result.quickOpen)}`);
     }
     if (resultPath) {
       fsSync.writeFileSync(resultPath, JSON.stringify(result, null, 2), "utf8");

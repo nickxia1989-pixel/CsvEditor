@@ -1289,6 +1289,79 @@ describe("App local directory flow", () => {
     expect(first.getText()).toBe("Ctrl Tab Draft,Name\n1,Alpha");
   });
 
+  it("opens a VS Code style Ctrl+P quick file picker for open tabs and tree files", async () => {
+    const openFile = new MockFileHandle("open.csv", "A,B\n1,2");
+    const nestedFile = new MockFileHandle("target_rules.csv", "ID,Name\n9,Target");
+    const nested = new MockDirectoryHandle("nested", [["target_rules.csv", nestedFile]]);
+    const root = new MockDirectoryHandle("Tables", [
+      ["open.csv", openFile],
+      ["nested", nested]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "open.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "open.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+
+    const input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    expect(document.activeElement).toBe(input);
+    const picker = screen.getByRole("listbox", { name: "快速打开文件结果" });
+    expect(await within(picker).findByRole("option", { name: /open\.csv 已打开/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.change(input, { target: { value: "target" } });
+    expect(await within(picker).findByRole("option", { name: /target_rules\.csv/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "target_rules.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.queryByRole("dialog", { name: "快速打开文件" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
+  });
+
+  it("commits an active inline editor before Ctrl+P opens another table", async () => {
+    const first = new MockFileHandle("first.csv", "ID,Name\n1,Alpha");
+    const second = new MockFileHandle("second.csv", "ID,Name\n2,Beta");
+    const root = new MockDirectoryHandle("Tables", [
+      ["first.csv", first],
+      ["second.csv", second]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "first.csv" }));
+    await waitFor(() => expect(screen.getByRole("gridcell", { name: "A1" })).toBeInTheDocument());
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const editor = await waitFor(() => {
+      const input = container.querySelector(".cell-editor") as HTMLInputElement | null;
+      expect(input).toBeInTheDocument();
+      return input as HTMLInputElement;
+    });
+    fireEvent.change(editor, { target: { value: "Ctrl P Draft" } });
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    const input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    fireEvent.change(input, { target: { value: "second" } });
+    await screen.findByRole("option", { name: /second\.csv/ });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "second.csv" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("tab", { name: "first.csv未保存" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "first.csv未保存" }));
+    await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("Ctrl P Draft"));
+  });
+
   it("does not move the selected cell when Ctrl+Tab is pressed with only one open table", async () => {
     const file = new MockFileHandle("single.csv", "A,B\n1,2");
     const root = new MockDirectoryHandle("Tables", [["single.csv", file]]);
