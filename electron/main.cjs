@@ -330,6 +330,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      spellcheck: false,
       sandbox: false,
       preload: path.join(__dirname, "preload.cjs")
     }
@@ -586,6 +587,7 @@ async function runSmokeTestWhenLoaded(window) {
         const toolsRect = tools?.getBoundingClientRect();
         const formulaRect = formulaBar?.getBoundingClientRect();
         const detailStyle = detailEditor ? getComputedStyle(detailEditor) : null;
+        const detailSpellcheckDisabled = detailEditor ? detailEditor.spellcheck === false : false;
         const detailHeightBefore = detailEditor ? Math.round(detailEditor.getBoundingClientRect().height) : 0;
         if (detailEditor) {
           detailEditor.style.height = "118px";
@@ -686,6 +688,7 @@ async function runSmokeTestWhenLoaded(window) {
           headerFiltered: Boolean(filteredHeaderB?.classList.contains("filtered")),
           buttonActive: Boolean(activeFilterButton?.classList.contains("active")),
           statusFiltered: Boolean(document.querySelector(".grid-status")?.classList.contains("filtered")),
+          hiddenGapMarker: Boolean(document.querySelector(".row-header.hidden-gap-before[title='上方已隐藏 1 行']")),
           buttonRect: rectSummary(activeFilterButton),
           headerBoxShadow: filteredHeaderB ? getComputedStyle(filteredHeaderB).boxShadow : "",
           statusBoxShadow: getComputedStyle(document.querySelector(".grid-status")).boxShadow
@@ -843,6 +846,7 @@ async function runSmokeTestWhenLoaded(window) {
         const inlineEditorVisual = {
           cellRect: inlineCellRect,
           editorRect: inlineEditorRect,
+          spellcheckDisabled: inlineEditor.spellcheck === false,
           leftAligned:
             Boolean(inlineCellRect && inlineEditorRect) && Math.abs(inlineEditorRect.left - inlineCellRect.left) <= 2,
           growsRight:
@@ -936,6 +940,7 @@ async function runSmokeTestWhenLoaded(window) {
             toolsAboveFormula: Boolean(toolsRect && formulaRect && toolsRect.top < formulaRect.top),
             detailEditorTag: detailEditor?.tagName ?? "",
             detailEditorResize: detailStyle?.resize ?? "",
+            detailSpellcheckDisabled,
             detailHeightBefore,
             detailHeightAfter,
             workspaceStatusRemoved,
@@ -1029,6 +1034,7 @@ async function runSmokeTestWhenLoaded(window) {
       !result.layout.toolsAboveFormula ||
       result.layout.detailEditorTag !== "TEXTAREA" ||
       result.layout.detailEditorResize !== "vertical" ||
+      !result.layout.detailSpellcheckDisabled ||
       result.layout.detailHeightAfter <= result.layout.detailHeightBefore ||
       !result.layout.gridStatusText.includes("未保存 1") ||
       !result.layout.gridStatusText.includes("选区 2 x 2") ||
@@ -1055,6 +1061,7 @@ async function runSmokeTestWhenLoaded(window) {
       !result.filter.visual?.headerFiltered ||
       !result.filter.visual.buttonActive ||
       !result.filter.visual.statusFiltered ||
+      !result.filter.visual.hiddenGapMarker ||
       !filterButtonRect ||
       Math.abs(filterButtonRect.width - filterButtonRect.height) > 1 ||
       filterButtonRect.width < 21 ||
@@ -1073,7 +1080,11 @@ async function runSmokeTestWhenLoaded(window) {
     ) {
       throw new Error(`桌面页签视觉烟测不正确: ${JSON.stringify(result.visual?.tab)}`);
     }
-    if (!result.visual?.inlineEditor?.leftAligned || !result.visual.inlineEditor.growsRight) {
+    if (
+      !result.visual?.inlineEditor?.leftAligned ||
+      !result.visual.inlineEditor.growsRight ||
+      !result.visual.inlineEditor.spellcheckDisabled
+    ) {
       throw new Error(`桌面单元格编辑框视觉烟测不正确: ${JSON.stringify(result.visual?.inlineEditor)}`);
     }
     if (!result.quickOpen?.hoverDidNotSelect || !result.quickOpen.opened || !result.quickOpen.closed) {

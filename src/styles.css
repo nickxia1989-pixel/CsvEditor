@@ -1459,6 +1459,10 @@ button:disabled {
   user-select: none;
 }
 
+.row-header.hidden-gap-before {
+  box-shadow: inset 0 2px 0 #d18a27;
+}
+
 .column-header.filtered {
   border-bottom-color: #4fa99f;
   color: #073f3a;

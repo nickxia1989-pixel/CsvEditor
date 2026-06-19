@@ -359,6 +359,18 @@ describe("GridEditor editing workflow", () => {
 
     expect(container.querySelector(".cell-editor")).not.toBeInTheDocument();
   });
+
+  it("disables spellcheck in formula and inline cell editors", () => {
+    const { container } = renderGridWithResult();
+
+    const formulaEditor = screen.getByLabelText("Selected cell value") as HTMLTextAreaElement;
+    expect(formulaEditor).toHaveAttribute("spellcheck", "false");
+
+    fireEvent.doubleClick(screen.getByRole("gridcell", { name: "A1" }));
+    const inlineEditor = container.querySelector(".cell-editor") as HTMLInputElement;
+
+    expect(inlineEditor).toHaveAttribute("spellcheck", "false");
+  });
 });
 
 describe("GridEditor toolbar", () => {
@@ -606,6 +618,8 @@ describe("GridEditor toolbar", () => {
     expect(screen.getByRole("gridcell", { name: "A2" })).toBeInTheDocument();
     expect(screen.queryByRole("gridcell", { name: "A3" })).not.toBeInTheDocument();
     expect(screen.getByRole("gridcell", { name: "A4" })).toBeInTheDocument();
+    expect(screen.getByRole("rowheader", { name: "Row 4" })).toHaveClass("hidden-gap-before");
+    expect(screen.getByRole("rowheader", { name: "Row 4" })).toHaveAttribute("title", "上方已隐藏 1 行");
     expect(screen.getByText((text) => text.includes("筛选显示 2 行"))).toBeInTheDocument();
   });
 

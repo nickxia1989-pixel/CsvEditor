@@ -443,6 +443,18 @@ export function GridEditor({
     return displayRows[insertionIndex] ?? displayRows[insertionIndex - 1] ?? 0;
   };
 
+  const getHiddenRowCountBefore = (row: number) => {
+    if (!displayRows) {
+      return 0;
+    }
+    const displayIndex = rowDisplayIndexMap?.get(row);
+    if (displayIndex === undefined || displayIndex <= 0) {
+      return 0;
+    }
+    const previousRow = displayRows[displayIndex - 1];
+    return Math.max(0, row - previousRow - 1);
+  };
+
   useEffect(() => {
     const viewportElement = viewportRef.current;
     if (!viewportElement) {
@@ -1554,41 +1566,45 @@ export function GridEditor({
     </div>
   );
 
-  const renderRowHeader = (row: number, keyPrefix: string, className = "") => (
-    <div
-      key={`${keyPrefix}-r-${row}`}
-      className={`row-header ${className}`}
-      role="rowheader"
-      aria-label={`Row ${row + 1}`}
-      style={{
-        left: 0,
-        top: getRowTop(row),
-        width: rowHeaderWidth,
-        height: rowHeight
-      }}
-      onPointerDown={(event) => {
-        event.preventDefault();
-        commitEditing(false);
-        dragAnchorRef.current = {
-          kind: "row",
-          row,
-          startX: event.clientX,
-          startY: event.clientY,
-          active: false
-        };
-        setDragging(true);
-        onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
-        focusGridInput();
-      }}
-      onPointerEnter={(event) => {
-        if (activateDragSelection(event.clientX, event.clientY)) {
-          updateDragSelection(row, 0);
-        }
-      }}
-    >
-      {row + 1}
-    </div>
-  );
+  const renderRowHeader = (row: number, keyPrefix: string, className = "") => {
+    const hiddenRowCountBefore = getHiddenRowCountBefore(row);
+    return (
+      <div
+        key={`${keyPrefix}-r-${row}`}
+        className={`row-header ${hiddenRowCountBefore > 0 ? "hidden-gap-before" : ""} ${className}`}
+        role="rowheader"
+        aria-label={`Row ${row + 1}`}
+        style={{
+          left: 0,
+          top: getRowTop(row),
+          width: rowHeaderWidth,
+          height: rowHeight
+        }}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          commitEditing(false);
+          dragAnchorRef.current = {
+            kind: "row",
+            row,
+            startX: event.clientX,
+            startY: event.clientY,
+            active: false
+          };
+          setDragging(true);
+          onSelectionChange({ anchorRow: row, anchorCol: realEndCol, focusRow: row, focusCol: 0 });
+          focusGridInput();
+        }}
+        onPointerEnter={(event) => {
+          if (activateDragSelection(event.clientX, event.clientY)) {
+            updateDragSelection(row, 0);
+          }
+        }}
+        title={hiddenRowCountBefore > 0 ? `上方已隐藏 ${hiddenRowCountBefore} 行` : undefined}
+      >
+        {row + 1}
+      </div>
+    );
+  };
 
   const renderCell = (row: number, col: number, keyPrefix: string, className = "") => {
     const key = cellKey(row, col);
@@ -1674,6 +1690,10 @@ export function GridEditor({
             className="cell-editor"
             value={editing.value}
             autoFocus
+            autoCapitalize="off"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
             onPointerDown={(event) => {
               event.stopPropagation();
               dragAnchorRef.current = null;
@@ -1920,6 +1940,10 @@ export function GridEditor({
         <textarea
           rows={1}
           value={selectedValue}
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           onChange={(event) => {
             clearCopiedState();
             onSetCell(tab.selection.focusRow, tab.selection.focusCol, event.target.value);
