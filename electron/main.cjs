@@ -459,6 +459,18 @@ async function runSmokeTestWhenLoaded(window) {
             clientY: rect.top + rect.height / 2
           };
         };
+        const rectSummary = (element) => {
+          const rect = element?.getBoundingClientRect();
+          return rect
+            ? {
+                left: Math.round(rect.left),
+                top: Math.round(rect.top),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+                right: Math.round(rect.right)
+              }
+            : null;
+        };
         const pointerUpWindow = async (options = {}) => {
           const EventClass = window.PointerEvent || window.MouseEvent;
           const dispatch = () => {
@@ -668,6 +680,16 @@ async function runSmokeTestWhenLoaded(window) {
             !document.querySelector(".grid-cell[aria-label='A3']") &&
             document.querySelector(".grid-cell[aria-label='A4']")
         );
+        const filteredHeaderB = document.querySelector("[role='columnheader'][aria-label='Column B']");
+        const activeFilterButton = document.querySelector("button[aria-label='筛选 B 列']");
+        const filterVisual = {
+          headerFiltered: Boolean(filteredHeaderB?.classList.contains("filtered")),
+          buttonActive: Boolean(activeFilterButton?.classList.contains("active")),
+          statusFiltered: Boolean(document.querySelector(".grid-status")?.classList.contains("filtered")),
+          buttonRect: rectSummary(activeFilterButton),
+          headerBoxShadow: filteredHeaderB ? getComputedStyle(filteredHeaderB).boxShadow : "",
+          statusBoxShadow: getComputedStyle(document.querySelector(".grid-status")).boxShadow
+        };
         clickElement(filterButton);
         await waitFor(() => document.querySelector(".column-filter-popover"), "filter popover missing after search filter");
         const clearSearchFilterButton = Array.from(document.querySelectorAll(".column-filter-actions button")).find(
@@ -772,6 +794,17 @@ async function runSmokeTestWhenLoaded(window) {
           (tab) => tab.getAttribute("aria-selected") === "true" && tab.textContent?.includes("smoke-tab-07.csv")
         );
         const quickOpenClosed = !document.querySelector(".quick-open-panel");
+        const selectedTab = Array.from(document.querySelectorAll("[role='tab']")).find(
+          (tab) => tab.getAttribute("aria-selected") === "true"
+        );
+        const activeTabStyle = selectedTab ? getComputedStyle(selectedTab) : null;
+        const selectedTabClose = selectedTab?.querySelector(".tab-close");
+        const tabVisual = {
+          activeClass: Boolean(selectedTab?.classList.contains("active")),
+          activeColor: activeTabStyle?.color ?? "",
+          activeBoxShadow: activeTabStyle?.boxShadow ?? "",
+          closeRect: rectSummary(selectedTabClose)
+        };
         const columnHeaderB = document.querySelector("[role='columnheader'][aria-label='Column B']");
         const columnHeaderD = document.querySelector("[role='columnheader'][aria-label='Column D']");
         if (!columnHeaderB || !columnHeaderD) {
@@ -794,6 +827,35 @@ async function runSmokeTestWhenLoaded(window) {
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("选区 2 x 2"), "row header drag selection not reflected");
         const rowHeaderDragStatus = document.querySelector(".grid-status")?.textContent ?? "";
         await pointerUpWindow();
+        const inlineEditTarget = document.querySelector(".grid-cell[aria-label='B2']");
+        if (!inlineEditTarget) {
+          throw new Error("inline edit target missing");
+        }
+        const inlineCellRect = rectSummary(inlineEditTarget);
+        inlineEditTarget.dispatchEvent(new MouseEvent("dblclick", {
+          bubbles: true,
+          cancelable: true,
+          ...elementCenter(inlineEditTarget)
+        }));
+        await waitFor(() => document.querySelector(".cell-editor"), "inline editor did not open");
+        const inlineEditor = document.querySelector(".cell-editor");
+        const inlineEditorRect = rectSummary(inlineEditor);
+        const inlineEditorVisual = {
+          cellRect: inlineCellRect,
+          editorRect: inlineEditorRect,
+          leftAligned:
+            Boolean(inlineCellRect && inlineEditorRect) && Math.abs(inlineEditorRect.left - inlineCellRect.left) <= 2,
+          growsRight:
+            Boolean(inlineCellRect && inlineEditorRect) &&
+            inlineEditorRect.width > inlineCellRect.width + 120 &&
+            inlineEditorRect.right > inlineCellRect.right + 120
+        };
+        inlineEditor.dispatchEvent(new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Escape"
+        }));
+        await waitFor(() => !document.querySelector(".cell-editor"), "inline editor did not close");
         setTextAreaValue(detailEditor, "多行\\n详情\\n编辑");
         await waitFor(() => document.querySelector(".grid-status")?.textContent?.includes("未保存 1"), "detail textarea edit not reflected");
         const gridStatusText = document.querySelector(".grid-status")?.textContent ?? "";
@@ -890,7 +952,12 @@ async function runSmokeTestWhenLoaded(window) {
           },
           filter: {
             searchStatus: filterSearchStatus,
-            searchMatchedOnly: filterSearchMatchedOnly
+            searchMatchedOnly: filterSearchMatchedOnly,
+            visual: filterVisual
+          },
+          visual: {
+            tab: tabVisual,
+            inlineEditor: inlineEditorVisual
           },
           quickOpen: {
             hoverDidNotSelect: quickOpenHoverDidNotSelect,
@@ -982,6 +1049,32 @@ async function runSmokeTestWhenLoaded(window) {
     }
     if (!result.filter?.searchMatchedOnly || !result.filter.searchStatus.includes("筛选显示 2 行")) {
       throw new Error(`桌面搜索筛选烟测不正确: ${JSON.stringify(result.filter)}`);
+    }
+    const filterButtonRect = result.filter.visual?.buttonRect;
+    if (
+      !result.filter.visual?.headerFiltered ||
+      !result.filter.visual.buttonActive ||
+      !result.filter.visual.statusFiltered ||
+      !filterButtonRect ||
+      Math.abs(filterButtonRect.width - filterButtonRect.height) > 1 ||
+      filterButtonRect.width < 21 ||
+      filterButtonRect.width > 23
+    ) {
+      throw new Error(`桌面筛选视觉烟测不正确: ${JSON.stringify(result.filter.visual)}`);
+    }
+    const closeRect = result.visual?.tab?.closeRect;
+    if (
+      !result.visual?.tab?.activeClass ||
+      !result.visual.tab.activeBoxShadow ||
+      !closeRect ||
+      Math.abs(closeRect.width - closeRect.height) > 1 ||
+      closeRect.width < 17 ||
+      closeRect.width > 19
+    ) {
+      throw new Error(`桌面页签视觉烟测不正确: ${JSON.stringify(result.visual?.tab)}`);
+    }
+    if (!result.visual?.inlineEditor?.leftAligned || !result.visual.inlineEditor.growsRight) {
+      throw new Error(`桌面单元格编辑框视觉烟测不正确: ${JSON.stringify(result.visual?.inlineEditor)}`);
     }
     if (!result.quickOpen?.hoverDidNotSelect || !result.quickOpen.opened || !result.quickOpen.closed) {
       throw new Error(`桌面快速打开烟测不正确: ${JSON.stringify(result.quickOpen)}`);

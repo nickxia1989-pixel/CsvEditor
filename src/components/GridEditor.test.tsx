@@ -593,12 +593,16 @@ describe("GridEditor toolbar", () => {
       ["3", "Beast"]
     ];
 
-    renderGrid(createTab({
+    const { container } = renderGridWithResult(createTab({
       data,
       columnFilters: { 1: ["Beast"] },
       selection: singleCellSelection(1, 0)
     }));
 
+    expect(container.querySelector(".grid-shell")).toHaveClass("has-active-filters");
+    expect(container.querySelector(".grid-status")).toHaveClass("filtered");
+    expect(screen.getByRole("columnheader", { name: "Column B" })).toHaveClass("filtered");
+    expect(screen.getByRole("button", { name: "筛选 B 列" })).toHaveClass("active");
     expect(screen.getByRole("gridcell", { name: "A2" })).toBeInTheDocument();
     expect(screen.queryByRole("gridcell", { name: "A3" })).not.toBeInTheDocument();
     expect(screen.getByRole("gridcell", { name: "A4" })).toBeInTheDocument();

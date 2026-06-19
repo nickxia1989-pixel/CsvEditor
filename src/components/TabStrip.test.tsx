@@ -54,6 +54,23 @@ function setHorizontalOverflow(element: HTMLElement, scrollWidth: number, client
 }
 
 describe("TabStrip", () => {
+  it("marks the active tab distinctly for styling and accessibility", () => {
+    render(
+      <TabStrip
+        tabs={[createTab(0), createTab(1)]}
+        activeTabId="tab-1"
+        onActivate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[0]).not.toHaveClass("active");
+    expect(tabs[0]).toHaveAttribute("aria-selected", "false");
+    expect(tabs[1]).toHaveClass("active");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+  });
+
   it("does not hide overflowing tabs behind mouse-wheel horizontal scrolling", () => {
     render(
       <TabStrip

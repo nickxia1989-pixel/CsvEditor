@@ -1719,7 +1719,7 @@ export function GridEditor({
   };
 
   return (
-    <section className={`grid-shell ${findPanelOpen ? "has-find-panel" : ""}`}>
+    <section className={`grid-shell ${findPanelOpen ? "has-find-panel" : ""} ${hasActiveFilters ? "has-active-filters" : ""}`}>
       <div className="grid-tools">
         <div className="tool-group history-tools">
           <button
@@ -2241,10 +2241,10 @@ export function GridEditor({
       ) : null}
       </div>
 
-      <div className="grid-status">
+      <div className={`grid-status ${hasActiveFilters ? "filtered" : ""}`}>
         <span className={dirtyCount > 0 ? "status-warning" : ""}>未保存 {dirtyCount}</span>
         <span>{selectedStats}</span>
-        <span>
+        <span className={hasActiveFilters ? "filter-status" : ""}>
           {tab.data.length} 行 / {maxColumnCount(tab.data)} 列
           {hasActiveFilters ? ` / 筛选显示 ${Math.max(0, displayRows!.filter((row) => row < tab.data.length).length - 1)} 行` : ""}
         </span>
