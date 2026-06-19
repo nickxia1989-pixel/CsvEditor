@@ -703,26 +703,20 @@ async function runSmokeTestWhenLoaded(window) {
         if (!quickHoverTarget) {
           throw new Error("quick file picker hover target missing");
         }
+        const quickHoverInitiallySelected = quickHoverTarget.classList.contains("selected");
         quickHoverTarget.dispatchEvent(new MouseEvent("mousemove", {
           bubbles: true,
           cancelable: true,
           clientX: quickHoverTarget.getBoundingClientRect().left + 10,
           clientY: quickHoverTarget.getBoundingClientRect().top + 10
         }));
-        await waitFor(
-          () => quickHoverTarget.classList.contains("selected"),
-          "quick file picker hover did not select result"
-        );
-        quickOpenInput.dispatchEvent(new KeyboardEvent("keydown", {
-          bubbles: true,
-          cancelable: true,
-          key: "Enter"
-        }));
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const quickOpenHoverDidNotSelect = !quickHoverInitiallySelected && !quickHoverTarget.classList.contains("selected");
+        quickHoverTarget.click();
         await waitFor(
           () => Array.from(document.querySelectorAll("[role='tab']")).some((tab) => tab.getAttribute("aria-selected") === "true" && tab.textContent?.includes("smoke-tab-07.csv")),
-          "quick file picker did not open hovered file"
+          "quick file picker did not open clicked file"
         );
-        const quickOpenHoverSelected = quickHoverTarget.classList.contains("selected");
         const quickOpenOpened = Array.from(document.querySelectorAll("[role='tab']")).some(
           (tab) => tab.getAttribute("aria-selected") === "true" && tab.textContent?.includes("smoke-tab-07.csv")
         );
@@ -844,7 +838,7 @@ async function runSmokeTestWhenLoaded(window) {
             panelClosed: !document.querySelector(".find-side-panel")
           },
           quickOpen: {
-            hoverSelected: quickOpenHoverSelected,
+            hoverDidNotSelect: quickOpenHoverDidNotSelect,
             opened: quickOpenOpened,
             closed: quickOpenClosed
           },
@@ -931,7 +925,7 @@ async function runSmokeTestWhenLoaded(window) {
     ) {
       throw new Error(`桌面查找侧栏烟测不正确: ${JSON.stringify(result.search)}`);
     }
-    if (!result.quickOpen?.hoverSelected || !result.quickOpen.opened || !result.quickOpen.closed) {
+    if (!result.quickOpen?.hoverDidNotSelect || !result.quickOpen.opened || !result.quickOpen.closed) {
       throw new Error(`桌面快速打开烟测不正确: ${JSON.stringify(result.quickOpen)}`);
     }
     if (resultPath) {

@@ -340,17 +340,6 @@ export function App() {
     [replaceTabSwitcher]
   );
 
-  const highlightTabSwitcherTab = useCallback(
-    (id: string) => {
-      const current = tabSwitcherRef.current;
-      if (!current || current.selectedTabId === id || !current.order.includes(id)) {
-        return;
-      }
-      replaceTabSwitcher({ ...current, selectedTabId: id });
-    },
-    [replaceTabSwitcher]
-  );
-
   const selectTabSwitcherEdge = useCallback(
     (edge: "first" | "last") => {
       const current = tabSwitcherRef.current;
@@ -430,15 +419,6 @@ export function App() {
 
   const updateQuickOpenQuery = useCallback((query: string) => {
     setQuickOpen((current) => (current ? { ...current, query } : current));
-  }, []);
-
-  const highlightQuickOpenCandidate = useCallback((id: string) => {
-    setQuickOpen((current) => {
-      if (!current || current.selectedId === id || !quickOpenCandidatesRef.current.some((candidate) => candidate.id === id)) {
-        return current;
-      }
-      return { ...current, selectedId: id };
-    });
   }, []);
 
   const moveQuickOpenSelection = useCallback((delta: number) => {
@@ -1861,7 +1841,6 @@ export function App() {
           tabs={tabSwitcherTabs}
           selectedTabId={tabSwitcher.selectedTabId}
           originTabId={tabSwitcher.originTabId}
-          onHighlight={highlightTabSwitcherTab}
           onSelect={commitTabSwitcher}
         />
       ) : null}
@@ -1872,7 +1851,6 @@ export function App() {
           selectedId={quickOpen.selectedId}
           loading={quickOpen.loading}
           onQueryChange={updateQuickOpenQuery}
-          onHighlight={highlightQuickOpenCandidate}
           onMoveSelection={moveQuickOpenSelection}
           onSelectEdge={selectQuickOpenEdge}
           onOpen={commitQuickOpenCandidate}

@@ -36,7 +36,6 @@ function renderQuickOpen(overrides: Partial<ComponentProps<typeof QuickOpenOverl
     selectedId: "candidate-0",
     loading: false,
     onQueryChange: vi.fn(),
-    onHighlight: vi.fn(),
     onMoveSelection: vi.fn(),
     onSelectEdge: vi.fn(),
     onOpen: vi.fn(),
@@ -83,12 +82,18 @@ describe("QuickOpenOverlay", () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("highlights hovered options without requiring a click", () => {
+  it("keeps hover separate from keyboard selection and opens clicked options", () => {
     const props = renderQuickOpen();
+    const hovered = screen.getByRole("option", { name: /table-04\.csv/ });
 
-    fireEvent.mouseMove(screen.getByRole("option", { name: /table-04\.csv/ }), { clientX: 40, clientY: 160 });
+    fireEvent.mouseMove(hovered, { clientX: 40, clientY: 160 });
 
-    expect(props.onHighlight).toHaveBeenCalledWith("candidate-4");
+    expect(hovered).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("option", { name: /table-00\.csv/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(hovered);
+
+    expect(props.onOpen).toHaveBeenCalledWith("candidate-4");
   });
 
   it("scrolls the floating results with the mouse wheel", () => {
@@ -117,7 +122,6 @@ describe("QuickOpenOverlay", () => {
         selectedId="candidate-6"
         loading={false}
         onQueryChange={vi.fn()}
-        onHighlight={vi.fn()}
         onMoveSelection={vi.fn()}
         onSelectEdge={vi.fn()}
         onOpen={vi.fn()}
@@ -134,7 +138,6 @@ describe("QuickOpenOverlay", () => {
         selectedId="candidate-11"
         loading={false}
         onQueryChange={vi.fn()}
-        onHighlight={vi.fn()}
         onMoveSelection={vi.fn()}
         onSelectEdge={vi.fn()}
         onOpen={vi.fn()}

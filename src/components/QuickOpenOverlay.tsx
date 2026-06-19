@@ -8,7 +8,6 @@ type QuickOpenOverlayProps = {
   selectedId: string | null;
   loading: boolean;
   onQueryChange(query: string): void;
-  onHighlight(id: string): void;
   onMoveSelection(delta: number): void;
   onSelectEdge(edge: "first" | "last"): void;
   onOpen(id?: string): void;
@@ -21,7 +20,6 @@ export function QuickOpenOverlay({
   selectedId,
   loading,
   onQueryChange,
-  onHighlight,
   onMoveSelection,
   onSelectEdge,
   onOpen,
@@ -30,7 +28,6 @@ export function QuickOpenOverlay({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const selectedOptionRef = useRef<HTMLButtonElement | null>(null);
-  const lastMousePositionRef = useRef<string | null>(null);
   const selectedIndex = candidates.findIndex((candidate) => candidate.id === selectedId);
   const selectedOptionDomId = selectedIndex >= 0 ? `quick-open-option-${selectedIndex}` : undefined;
 
@@ -115,15 +112,6 @@ export function QuickOpenOverlay({
     }
   };
 
-  const handleOptionMouseMove = (id: string, event: MouseEvent<HTMLButtonElement>) => {
-    const position = `${event.clientX}:${event.clientY}`;
-    if (lastMousePositionRef.current === position) {
-      return;
-    }
-    lastMousePositionRef.current = position;
-    onHighlight(id);
-  };
-
   return (
     <div className="quick-open-scrim" onMouseDown={handleScrimMouseDown}>
       <div className="quick-open-panel" role="dialog" aria-label="快速打开文件" onWheel={handlePanelWheel}>
@@ -164,8 +152,6 @@ export function QuickOpenOverlay({
                 aria-selected={selected}
                 aria-label={`${candidate.name}${candidate.open ? " 已打开" : ""}${candidate.dirty ? " 未保存" : ""}${candidate.externalChanged ? " 磁盘变更" : ""} ${candidate.path}`}
                 ref={selected ? selectedOptionRef : null}
-                onMouseMove={(event) => handleOptionMouseMove(candidate.id, event)}
-                onFocus={() => onHighlight(candidate.id)}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => onOpen(candidate.id)}
               >

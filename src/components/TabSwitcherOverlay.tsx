@@ -6,7 +6,6 @@ type TabSwitcherOverlayProps = {
   tabs: CsvTab[];
   selectedTabId: string;
   originTabId: string;
-  onHighlight(id: string): void;
   onSelect(id: string): void;
 };
 
@@ -14,7 +13,6 @@ export function TabSwitcherOverlay({
   tabs,
   selectedTabId,
   originTabId,
-  onHighlight,
   onSelect
 }: TabSwitcherOverlayProps) {
   const selectedOptionRef = useRef<HTMLButtonElement | null>(null);
@@ -59,8 +57,6 @@ export function TabSwitcherOverlay({
               aria-selected={selected}
               aria-label={`${tab.name}${tab.dirty ? " 未保存" : ""}${tab.externalChanged ? " 磁盘冲突" : ""} ${tab.path}`}
               ref={selected ? selectedOptionRef : null}
-              onMouseEnter={() => onHighlight(tab.id)}
-              onFocus={() => onHighlight(tab.id)}
               onClick={() => onSelect(tab.id)}
             >
               <FileText size={16} />

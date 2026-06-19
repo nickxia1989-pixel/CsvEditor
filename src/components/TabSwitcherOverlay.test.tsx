@@ -67,7 +67,6 @@ describe("TabSwitcherOverlay", () => {
         tabs={tabs}
         selectedTabId="tab-12"
         originTabId="tab-0"
-        onHighlight={vi.fn()}
         onSelect={vi.fn()}
       />
     );
@@ -80,7 +79,6 @@ describe("TabSwitcherOverlay", () => {
         tabs={tabs}
         selectedTabId="tab-17"
         originTabId="tab-0"
-        onHighlight={vi.fn()}
         onSelect={vi.fn()}
       />
     );
@@ -97,7 +95,6 @@ describe("TabSwitcherOverlay", () => {
         tabs={tabs}
         selectedTabId="tab-0"
         originTabId="tab-0"
-        onHighlight={vi.fn()}
         onSelect={vi.fn()}
       />
     );
@@ -113,5 +110,28 @@ describe("TabSwitcherOverlay", () => {
 
     expect(listbox.scrollTop).toBe(130);
     expect(listbox.scrollLeft).toBe(10);
+  });
+
+  it("keeps mouse hover separate from the keyboard selection", () => {
+    const tabs = Array.from({ length: 4 }, (_, index) => createTab(index));
+    const onSelect = vi.fn();
+    render(
+      <TabSwitcherOverlay
+        tabs={tabs}
+        selectedTabId="tab-0"
+        originTabId="tab-0"
+        onSelect={onSelect}
+      />
+    );
+
+    const hovered = screen.getByRole("option", { name: /table-02\.csv/ });
+    fireEvent.mouseEnter(hovered);
+
+    expect(hovered).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("option", { name: /table-00\.csv/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(hovered);
+
+    expect(onSelect).toHaveBeenCalledWith("tab-2");
   });
 });
