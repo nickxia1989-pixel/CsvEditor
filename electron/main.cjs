@@ -1386,7 +1386,8 @@ async function runSmokeTestWhenLoaded(window) {
             paneTitle: paneTitle ? getComputedStyle(paneTitle).webkitAppRegion : "",
             topbarActions: topbarActions ? getComputedStyle(topbarActions).webkitAppRegion : "",
             fileActions: fileActions ? getComputedStyle(fileActions).webkitAppRegion : "",
-            tabStrip: tabStrip ? getComputedStyle(tabStrip).webkitAppRegion : ""
+            tabStrip: tabStrip ? getComputedStyle(tabStrip).webkitAppRegion : "",
+            tab: firstTab ? getComputedStyle(firstTab).webkitAppRegion : ""
           },
           layout: {
             topbarHeight: topbarRect ? Math.round(topbarRect.height) : 0,
@@ -1491,7 +1492,8 @@ async function runSmokeTestWhenLoaded(window) {
       result.regions.topbar !== "drag" ||
       result.regions.paneTitle !== "drag" ||
       result.regions.fileActions !== "no-drag" ||
-      result.regions.tabStrip !== "no-drag" ||
+      result.regions.tabStrip !== "drag" ||
+      result.regions.tab !== "no-drag" ||
       result.regions.topbarActions !== ""
     ) {
       throw new Error("桌面沉浸式拖拽区域烟测不正确。");

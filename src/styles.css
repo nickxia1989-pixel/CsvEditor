@@ -472,7 +472,7 @@ button:disabled {
   overflow: visible;
   padding: 5px 7px 0;
   gap: 4px;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
 }
 
 .empty-tabs {
