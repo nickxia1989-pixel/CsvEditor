@@ -10,7 +10,7 @@ type QuickOpenOverlayProps = {
   onQueryChange(query: string): void;
   onMoveSelection(delta: number): void;
   onSelectEdge(edge: "first" | "last"): void;
-  onOpen(id?: string): void;
+  onOpen(id?: string, options?: { alternatePane?: boolean }): void;
   onClose(): void;
 };
 
@@ -63,7 +63,11 @@ export function QuickOpenOverlay({
     if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      onOpen();
+      if (event.shiftKey) {
+        onOpen(undefined, { alternatePane: true });
+      } else {
+        onOpen();
+      }
       return;
     }
     if (event.key === "ArrowDown") {
@@ -161,7 +165,13 @@ export function QuickOpenOverlay({
                 aria-label={`${candidate.name}${candidate.open ? " 已打开" : ""}${candidate.dirty ? " 未保存" : ""}${candidate.externalChanged ? " 磁盘变更" : ""} ${candidate.path}`}
                 ref={selected ? selectedOptionRef : null}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onOpen(candidate.id)}
+                onClick={(event) => {
+                  if (event.shiftKey) {
+                    onOpen(candidate.id, { alternatePane: true });
+                  } else {
+                    onOpen(candidate.id);
+                  }
+                }}
               >
                 <FileText size={16} />
                 <span className="quick-open-copy">

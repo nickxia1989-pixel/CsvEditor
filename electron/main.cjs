@@ -1016,6 +1016,60 @@ async function runSmokeTestWhenLoaded(window) {
           (tab) => tab.getAttribute("aria-selected") === "true" && tab.textContent?.includes("smoke-tab-07.csv")
         );
         const quickOpenClosed = !document.querySelector(".quick-open-panel");
+        openQuickFilePicker();
+        await waitFor(() => document.querySelector(".quick-open-panel"), "quick file picker did not reopen for shift split");
+        const quickShiftInput = document.querySelector("input[aria-label='快速打开文件']");
+        if (!quickShiftInput) {
+          throw new Error("quick file picker shift input missing");
+        }
+        setInputValue(quickShiftInput, "smoke-long");
+        await waitFor(
+          () => Array.from(document.querySelectorAll(".quick-open-option")).some((option) => option.textContent?.includes("smoke-long.csv")),
+          "quick file picker shift result missing"
+        );
+        const quickShiftOption = Array.from(document.querySelectorAll(".quick-open-option")).find((option) =>
+          option.textContent?.includes("smoke-long.csv")
+        );
+        if (!quickShiftOption) {
+          throw new Error("quick file picker shift option missing");
+        }
+        quickShiftOption.dispatchEvent(new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          shiftKey: true
+        }));
+        await waitFor(
+          () => {
+            const quickShiftRightSelect = document.querySelector("select[aria-label='右侧分栏显示的表格']");
+            return (
+              document.querySelectorAll(".workspace-pane").length === 2 &&
+              quickShiftRightSelect?.selectedOptions[0]?.textContent?.includes("smoke-long.csv")
+            );
+          },
+          "quick file picker shift click did not open the right split pane"
+        );
+        const quickShiftLeftPane = document.querySelector("[aria-label='左侧分栏']");
+        const quickShiftRightPane = document.querySelector("[aria-label='右侧分栏']");
+        const quickShiftRightSelect = document.querySelector("select[aria-label='右侧分栏显示的表格']");
+        const quickOpenShiftOpenedRightPane = Boolean(
+          quickShiftLeftPane &&
+            quickShiftRightPane &&
+            quickShiftRightPane.classList.contains("active") &&
+            quickShiftRightSelect?.selectedOptions[0]?.textContent?.includes("smoke-long.csv") &&
+            quickShiftRightPane.textContent?.includes("LONG_R1_C1")
+        );
+        const quickShiftCloseSplitButton = document.querySelector("button[aria-label='关闭左右分栏']");
+        if (!quickShiftCloseSplitButton) {
+          throw new Error("quick file picker shift split close button missing");
+        }
+        clickElement(quickShiftCloseSplitButton);
+        await waitFor(
+          () =>
+            document.querySelectorAll(".workspace-pane").length === 0 &&
+            document.querySelector("button[aria-label='开启左右分栏']"),
+          "quick file picker shift split did not close"
+        );
         const longFileRow = Array.from(document.querySelectorAll(".tree-row.file")).find((row) =>
           row.textContent?.includes("smoke-long.csv")
         );
@@ -1388,7 +1442,8 @@ async function runSmokeTestWhenLoaded(window) {
           quickOpen: {
             hoverDidNotSelect: quickOpenHoverDidNotSelect,
             opened: quickOpenOpened,
-            closed: quickOpenClosed
+            closed: quickOpenClosed,
+            shiftOpenedRightPane: quickOpenShiftOpenedRightPane
           },
           split: splitVisual,
           savedVersion: saved.version
@@ -1536,7 +1591,12 @@ async function runSmokeTestWhenLoaded(window) {
     ) {
       throw new Error(`桌面单元格编辑框视觉烟测不正确: ${JSON.stringify(result.visual?.inlineEditor)}`);
     }
-    if (!result.quickOpen?.hoverDidNotSelect || !result.quickOpen.opened || !result.quickOpen.closed) {
+    if (
+      !result.quickOpen?.hoverDidNotSelect ||
+      !result.quickOpen.opened ||
+      !result.quickOpen.closed ||
+      !result.quickOpen.shiftOpenedRightPane
+    ) {
       throw new Error(`桌面快速打开烟测不正确: ${JSON.stringify(result.quickOpen)}`);
     }
     if (

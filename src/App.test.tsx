@@ -1554,6 +1554,76 @@ describe("App local directory flow", () => {
     await waitFor(() => expect(screen.getByLabelText("Selected cell value")).toHaveValue("Ctrl P Draft"));
   });
 
+  it("opens Ctrl+P selections in the alternate split pane while Shift is held", async () => {
+    const leftFile = new MockFileHandle("left.csv", "LeftHead,Name\nL1,Left");
+    const rightFile = new MockFileHandle("right.csv", "RightHead,Name\nR1,Right");
+    const thirdFile = new MockFileHandle("third.csv", "ThirdHead,Name\nT1,Third");
+    const fourthFile = new MockFileHandle("fourth.csv", "FourthHead,Name\nF1,Fourth");
+    const root = new MockDirectoryHandle("Tables", [
+      ["left.csv", leftFile],
+      ["right.csv", rightFile],
+      ["third.csv", thirdFile],
+      ["fourth.csv", fourthFile]
+    ]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "left.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "left.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    let input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    fireEvent.change(input, { target: { value: "right" } });
+    await screen.findByRole("option", { name: /right\.csv/ });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+
+    let leftPane = await screen.findByLabelText("左侧分栏");
+    let rightPane = screen.getByLabelText("右侧分栏");
+    await waitFor(() => {
+      expect(within(leftPane).getByRole("combobox", { name: "左侧分栏显示的表格" })).toHaveDisplayValue("left.csv");
+      expect(within(rightPane).getByRole("combobox", { name: "右侧分栏显示的表格" })).toHaveDisplayValue("right.csv");
+      expect(rightPane).toHaveClass("active");
+      expect(within(rightPane).getByLabelText("Selected cell value")).toHaveValue("RightHead");
+    });
+
+    fireEvent.pointerDown(leftPane);
+    await waitFor(() => expect(leftPane).toHaveClass("active"));
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    fireEvent.change(input, { target: { value: "third" } });
+    const thirdOption = await screen.findByRole("option", { name: /third\.csv/ });
+    fireEvent.click(thirdOption, { shiftKey: true });
+
+    leftPane = screen.getByLabelText("左侧分栏");
+    rightPane = screen.getByLabelText("右侧分栏");
+    await waitFor(() => {
+      expect(within(leftPane).getByRole("combobox", { name: "左侧分栏显示的表格" })).toHaveDisplayValue("left.csv");
+      expect(within(rightPane).getByRole("combobox", { name: "右侧分栏显示的表格" })).toHaveDisplayValue("third.csv");
+      expect(rightPane).toHaveClass("active");
+      expect(within(rightPane).getByLabelText("Selected cell value")).toHaveValue("ThirdHead");
+    });
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    fireEvent.change(input, { target: { value: "fourth" } });
+    await screen.findByRole("option", { name: /fourth\.csv/ });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+
+    leftPane = screen.getByLabelText("左侧分栏");
+    rightPane = screen.getByLabelText("右侧分栏");
+    await waitFor(() => {
+      expect(within(leftPane).getByRole("combobox", { name: "左侧分栏显示的表格" })).toHaveDisplayValue("fourth.csv");
+      expect(within(rightPane).getByRole("combobox", { name: "右侧分栏显示的表格" })).toHaveDisplayValue("third.csv");
+      expect(leftPane).toHaveClass("active");
+      expect(within(leftPane).getByLabelText("Selected cell value")).toHaveValue("FourthHead");
+    });
+  });
+
   it("shows two editable tables in left and right split panes", async () => {
     const leftFile = new MockFileHandle("left.csv", "LeftHead,Name\nL1,Left");
     const rightFile = new MockFileHandle("right.csv", "RightHead,Name\nR1,Right");

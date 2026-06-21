@@ -151,6 +151,7 @@ type OpenFileOptions = {
   activate?: boolean;
   quiet?: boolean;
   targetCell?: FindResultCell;
+  targetPane?: WorkspacePaneId;
   status?: string;
   clearFilters?: boolean;
 };
@@ -158,6 +159,9 @@ type QuickOpenState = {
   query: string;
   selectedId: string | null;
   loading: boolean;
+};
+type QuickOpenCommitOptions = {
+  alternatePane?: boolean;
 };
 type PathContextMenuState = {
   name: string;
@@ -205,6 +209,7 @@ export function App() {
   const activeTabIdRef = useRef(activeTabId);
   const paneTabIdsRef = useRef(paneTabIds);
   const activePaneRef = useRef(activePane);
+  const splitEnabledRef = useRef(splitEnabled);
   const recentTabIdsRef = useRef<string[]>([]);
   const tabSwitcherRef = useRef<TabSwitcherSession | null>(null);
   const quickOpenLoadSerialRef = useRef(0);
@@ -251,6 +256,10 @@ export function App() {
   useEffect(() => {
     activePaneRef.current = activePane;
   }, [activePane]);
+
+  useEffect(() => {
+    splitEnabledRef.current = splitEnabled;
+  }, [splitEnabled]);
 
   useEffect(() => {
     if (!pathContextMenu) {
@@ -478,6 +487,36 @@ export function App() {
       activeTabIdRef.current = paneTabId;
       setActiveTabId(paneTabId);
     }
+  }, []);
+
+  const resolveQuickOpenTargetPane = useCallback((options?: QuickOpenCommitOptions): WorkspacePaneId => {
+    if (!options?.alternatePane) {
+      return activePaneRef.current;
+    }
+    return splitEnabledRef.current ? getOppositePane(activePaneRef.current) : "right";
+  }, []);
+
+  const ensureSplitViewOpenForQuickOpen = useCallback((targetPane: WorkspacePaneId, targetTabId?: string) => {
+    if (splitEnabledRef.current) {
+      return;
+    }
+
+    const currentPaneTabIds = paneTabIdsRef.current;
+    const currentTabs = tabsRef.current;
+    const leftId =
+      targetPane === "left" && targetTabId
+        ? targetTabId
+        : currentPaneTabIds.left ?? activeTabIdRef.current ?? currentTabs[0]?.id ?? null;
+    const rightFallback = currentPaneTabIds.right ?? currentTabs.find((tab) => tab.id !== leftId)?.id ?? leftId;
+    const rightId = targetPane === "right" && targetTabId ? targetTabId : rightFallback;
+    const nextPaneTabIds: PaneTabIds = {
+      left: leftId,
+      right: rightId ?? null
+    };
+    paneTabIdsRef.current = nextPaneTabIds;
+    splitEnabledRef.current = true;
+    setPaneTabIds(nextPaneTabIds);
+    setSplitEnabled(true);
   }, []);
 
   const replaceTabSwitcher = useCallback((next: TabSwitcherSession | null) => {
@@ -844,7 +883,7 @@ export function App() {
   const openFileRef = useCallback(
     async (fileRef: CsvFileRef, options: OpenFileOptions = {}): Promise<string | null> => {
       const shouldActivate = options.activate ?? true;
-      const targetPane = activePaneRef.current;
+      const targetPane = options.targetPane ?? activePaneRef.current;
       if (shouldActivate) {
         pendingActivatePathRef.current = fileRef.path;
       }
@@ -924,26 +963,38 @@ export function App() {
   );
 
   const commitQuickOpenCandidate = useCallback(
-    (explicitId?: string) => {
+    (explicitId?: string, options?: QuickOpenCommitOptions) => {
       const current = quickOpen;
       if (!current) {
         return;
       }
       const targetId = explicitId ?? current.selectedId;
       const candidate = quickOpenCandidatesRef.current.find((item) => item.id === targetId);
+      const targetPane = resolveQuickOpenTargetPane(options);
       closeQuickOpen();
       if (!candidate) {
         return;
       }
       runAfterActiveEditCommit(() => {
+        if (options?.alternatePane) {
+          ensureSplitViewOpenForQuickOpen(targetPane, candidate.tabId);
+        }
         if (candidate.tabId && tabsRef.current.some((tab) => tab.id === candidate.tabId)) {
-          activateTabInPane(candidate.tabId);
+          activateTabInPane(candidate.tabId, targetPane);
           return;
         }
-        void openFileRef(candidate.fileRef);
+        void openFileRef(candidate.fileRef, { targetPane });
       });
     },
-    [activateTabInPane, closeQuickOpen, openFileRef, quickOpen, runAfterActiveEditCommit]
+    [
+      activateTabInPane,
+      closeQuickOpen,
+      ensureSplitViewOpenForQuickOpen,
+      openFileRef,
+      quickOpen,
+      resolveQuickOpenTargetPane,
+      runAfterActiveEditCommit
+    ]
   );
 
   const handlePickDirectory = useCallback(async () => {
@@ -1728,6 +1779,7 @@ export function App() {
     const rightId = paneTabIdsRef.current.right ?? chooseSecondaryTabId(leftId);
     const nextPaneTabIds = { left: leftId, right: rightId };
     paneTabIdsRef.current = nextPaneTabIds;
+    splitEnabledRef.current = true;
     setPaneTabIds(nextPaneTabIds);
     setSplitEnabled(true);
     if (leftId) {
@@ -1739,6 +1791,7 @@ export function App() {
   }, [chooseSecondaryTabId, tabs]);
 
   const disableSplitView = useCallback(() => {
+    splitEnabledRef.current = false;
     setSplitEnabled(false);
     const leftPaneTabId = paneTabIdsRef.current.left ?? tabs[0]?.id ?? null;
     activePaneRef.current = "left";
@@ -3083,6 +3136,10 @@ function applyOpenFileOptionsToTab(tab: CsvTab, options: OpenFileOptions): CsvTa
 
 function createSelectionScrollToken(): number {
   return Date.now() + Math.random();
+}
+
+function getOppositePane(pane: WorkspacePaneId): WorkspacePaneId {
+  return pane === "left" ? "right" : "left";
 }
 
 function createTabId(): string {

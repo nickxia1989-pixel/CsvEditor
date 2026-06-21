@@ -96,6 +96,18 @@ describe("QuickOpenOverlay", () => {
     expect(props.onOpen).toHaveBeenCalledWith("candidate-4");
   });
 
+  it("forwards Shift quick-open actions as alternate-pane requests", () => {
+    const props = renderQuickOpen();
+    const input = screen.getByRole("combobox", { name: "快速打开文件" });
+    const option = screen.getByRole("option", { name: /table-04\.csv/ });
+
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent.click(option, { shiftKey: true });
+
+    expect(props.onOpen).toHaveBeenNthCalledWith(1, undefined, { alternatePane: true });
+    expect(props.onOpen).toHaveBeenNthCalledWith(2, "candidate-4", { alternatePane: true });
+  });
+
   it("scrolls the floating results with the mouse wheel", () => {
     renderQuickOpen();
     const listbox = screen.getByRole("listbox", { name: "快速打开文件结果" });
