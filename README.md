@@ -64,16 +64,22 @@
 ### 桌面端优先
 
 - 提供 Electron 桌面版，直接读写本地目录，不依赖外部浏览器。
-- 打包产物是完整目录：
+- Windows 打包产物是完整目录：
 
 ```text
 release\CSV Workspace Editor
 ```
 
-- 可执行文件路径：
+- Windows 可执行文件路径：
 
 ```text
 release\CSV Workspace Editor\CSV Workspace Editor.exe
+```
+
+- macOS 打包产物是 `.app`：
+
+```text
+release-mac/CSV Workspace Editor.app
 ```
 
 ## 推荐工作流
@@ -89,15 +95,39 @@ release\CSV Workspace Editor\CSV Workspace Editor.exe
 
 ### 使用桌面版
 
+#### Windows
+
 双击根目录的 `start-desktop.bat`。
 
 脚本会优先打开已打包的桌面程序；如果还没有打包产物，会回退到本地 Electron 启动方式。
 
-生成或刷新桌面版：
+生成或刷新 Windows 桌面版：
+
+```powershell
+npm run dist:win
+```
+
+旧命令仍然保留，等价于 Windows 打包：
 
 ```powershell
 npm run dist:desktop
 ```
+
+#### macOS
+
+生成或刷新 macOS 桌面版：
+
+```bash
+npm run dist:mac
+```
+
+生成后可以直接打开：
+
+```bash
+open "release-mac/CSV Workspace Editor.app"
+```
+
+当前 macOS 产物用于本机和内部测试，尚未做开发者签名和 notarization；如果要发给其他 Mac 用户，后续还需要补签名发布流程。
 
 ### 使用浏览器开发版
 
@@ -127,8 +157,15 @@ npm run stop:editor
 npm test
 npm run build
 npm run desktop:smoke
-npm run dist:desktop
+npm run dist:win
 node scripts\desktop-smoke.cjs --exe "release\CSV Workspace Editor\CSV Workspace Editor.exe"
+```
+
+macOS 打包和已打包产物烟测：
+
+```bash
+npm run dist:mac
+node scripts/desktop-smoke.cjs --app "release-mac/CSV Workspace Editor.app"
 ```
 
 `npm run desktop:smoke` 会启动真实 Electron 窗口做端到端烟测，覆盖目录打开、编辑保存、热刷新、筛选、搜索、全表搜索、快速打开、左右分栏、收藏、复制路径和关键视觉状态。

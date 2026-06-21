@@ -6,14 +6,64 @@ const path = require("node:path");
 const projectRoot = path.resolve(__dirname, "..");
 
 function parseArgs(argv) {
-  const args = { exe: "" };
+  const args = { exe: "", app: "" };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--exe") {
       args.exe = argv[index + 1] ?? "";
       index += 1;
+    } else if (argv[index] === "--app") {
+      args.app = argv[index + 1] ?? "";
+      index += 1;
     }
   }
   return args;
+}
+
+function readPlistString(plistText, key) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = plistText.match(new RegExp(`<key>${escapedKey}</key>\\s*<string>([^<]+)</string>`));
+  return match?.[1]?.trim() ?? "";
+}
+
+function resolveMacAppExecutable(appPath) {
+  const appDir = path.resolve(appPath);
+  const infoPlistPath = path.join(appDir, "Contents", "Info.plist");
+  if (path.extname(appDir) !== ".app" || !fs.existsSync(infoPlistPath)) {
+    throw new Error(`Mac .app bundle not found: ${appDir}`);
+  }
+
+  const plistText = fs.readFileSync(infoPlistPath, "utf8");
+  const executableName = readPlistString(plistText, "CFBundleExecutable") || "Electron";
+  const executablePath = path.join(appDir, "Contents", "MacOS", executableName);
+  if (!fs.existsSync(executablePath)) {
+    throw new Error(`Mac .app executable not found: ${executablePath}`);
+  }
+  return executablePath;
+}
+
+function resolveLaunchTarget(args) {
+  const appPath = args.app || (args.exe.endsWith(".app") ? args.exe : "");
+  if (appPath) {
+    return {
+      executable: resolveMacAppExecutable(appPath),
+      packaged: true,
+      app: path.resolve(appPath)
+    };
+  }
+
+  if (args.exe) {
+    return {
+      executable: args.exe,
+      packaged: true,
+      app: ""
+    };
+  }
+
+  return {
+    executable: require("electron"),
+    packaged: false,
+    app: ""
+  };
 }
 
 async function main() {
@@ -42,9 +92,9 @@ async function main() {
   );
   fs.writeFileSync(path.join(tempRoot, "smoke-long.csv"), `${longHeader}\r\n${longRows.join("\r\n")}\r\n`, "utf8");
 
-  const electronExecutable = args.exe || require("electron");
-  const childArgs = args.exe ? [] : [projectRoot];
-  const child = spawn(electronExecutable, childArgs, {
+  const launchTarget = resolveLaunchTarget(args);
+  const childArgs = launchTarget.packaged ? [] : [projectRoot];
+  const child = spawn(launchTarget.executable, childArgs, {
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -89,7 +139,8 @@ async function main() {
     JSON.stringify(
       {
         status: "passed",
-        executable: electronExecutable,
+        executable: launchTarget.executable,
+        app: launchTarget.app || undefined,
         tempRoot,
         entries: result.entries,
         savedVersion: result.savedVersion,

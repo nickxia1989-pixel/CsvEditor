@@ -75,6 +75,10 @@ function refreshExistingAppResources(error) {
 }
 
 function main() {
+  if (process.platform !== "win32") {
+    throw new Error("Windows desktop packaging must be run on Windows. Use npm run dist:mac for macOS packaging.");
+  }
+
   assertInsideProject(releaseRoot);
   try {
     packageFullApp();
