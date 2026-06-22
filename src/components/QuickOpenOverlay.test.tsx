@@ -103,9 +103,12 @@ describe("QuickOpenOverlay", () => {
 
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     fireEvent.click(option, { shiftKey: true });
+    fireEvent.mouseDown(option, { shiftKey: true });
+    fireEvent.click(option);
 
     expect(props.onOpen).toHaveBeenNthCalledWith(1, undefined, { alternatePane: true });
     expect(props.onOpen).toHaveBeenNthCalledWith(2, "candidate-4", { alternatePane: true });
+    expect(props.onOpen).toHaveBeenNthCalledWith(3, "candidate-4", { alternatePane: true });
   });
 
   it("scrolls the floating results with the mouse wheel", () => {

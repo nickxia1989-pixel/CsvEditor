@@ -28,6 +28,7 @@ export function QuickOpenOverlay({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const selectedOptionRef = useRef<HTMLButtonElement | null>(null);
+  const mouseDownAlternateCandidateRef = useRef<string | null>(null);
   const selectedIndex = candidates.findIndex((candidate) => candidate.id === selectedId);
   const selectedOptionDomId = selectedIndex >= 0 ? `quick-open-option-${selectedIndex}` : undefined;
 
@@ -164,9 +165,14 @@ export function QuickOpenOverlay({
                 aria-selected={selected}
                 aria-label={`${candidate.name}${candidate.open ? " 已打开" : ""}${candidate.dirty ? " 未保存" : ""}${candidate.externalChanged ? " 磁盘变更" : ""} ${candidate.path}`}
                 ref={selected ? selectedOptionRef : null}
-                onMouseDown={(event) => event.preventDefault()}
+                onMouseDown={(event) => {
+                  mouseDownAlternateCandidateRef.current = event.shiftKey ? candidate.id : null;
+                  event.preventDefault();
+                }}
                 onClick={(event) => {
-                  if (event.shiftKey) {
+                  const alternatePane = event.shiftKey || mouseDownAlternateCandidateRef.current === candidate.id;
+                  mouseDownAlternateCandidateRef.current = null;
+                  if (alternatePane) {
                     onOpen(candidate.id, { alternatePane: true });
                   } else {
                     onOpen(candidate.id);
