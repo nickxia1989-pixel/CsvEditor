@@ -505,12 +505,19 @@ async function runSmokeTestWhenLoaded(window) {
           setter.call(element, option.value);
           element.dispatchEvent(new Event("change", { bubbles: true }));
         };
-        const toggleFindPanel = () => {
+        const openOrFocusFindPanel = () => {
           window.dispatchEvent(new KeyboardEvent("keydown", {
             bubbles: true,
             cancelable: true,
             key: "f",
             ctrlKey: true
+          }));
+        };
+        const closeFindPanel = () => {
+          window.dispatchEvent(new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "Escape"
           }));
         };
         const openContextMenu = (element) => {
@@ -791,7 +798,7 @@ async function runSmokeTestWhenLoaded(window) {
           "shift selection not restored"
         );
         await pointerUpWindow(elementCenter(restoredCellB2));
-        toggleFindPanel();
+        openOrFocusFindPanel();
         await waitFor(() => document.querySelector(".find-side-panel"), "find side panel did not open");
         const findPanel = document.querySelector(".find-side-panel");
         const findInput = document.querySelector("input[aria-label='查找内容']");
@@ -823,7 +830,7 @@ async function runSmokeTestWhenLoaded(window) {
         );
         const findResultJumped = document.querySelector(".grid-cell.focus")?.getAttribute("aria-label") === "A2";
         const findSummaryText = document.querySelector(".find-results-summary")?.textContent ?? "";
-        toggleFindPanel();
+        closeFindPanel();
         await waitFor(() => !document.querySelector(".find-side-panel"), "find side panel did not close");
         const globalSearchButton = findButton("全表搜索");
         if (!globalSearchButton || globalSearchButton.disabled) {
@@ -1135,7 +1142,7 @@ async function runSmokeTestWhenLoaded(window) {
         };
         clickElement(rightPane.querySelector(".pane-activation"));
         await waitFor(() => rightPane.classList.contains("active"), "right split pane did not become active");
-        toggleFindPanel();
+        openOrFocusFindPanel();
         await waitFor(
           () => rightPane.querySelector(".find-side-panel") && !leftPane.querySelector(".find-side-panel"),
           "split find shortcut was not scoped to active pane"
@@ -1176,7 +1183,7 @@ async function runSmokeTestWhenLoaded(window) {
           leftRect: rectSummary(leftPane),
           rightRect: rectSummary(rightPane)
         };
-        toggleFindPanel();
+        closeFindPanel();
         await waitFor(() => !document.querySelector(".find-side-panel"), "split find side panel did not close");
         const closeSplitButton = document.querySelector("button[aria-label='关闭左右分栏']");
         if (!closeSplitButton) {

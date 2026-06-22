@@ -1051,10 +1051,16 @@ export function GridEditor({
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
         if (findPanelOpen) {
-          closeFindPanel();
-        } else {
-          openFindPanel();
+          findInputRef.current?.focus({ preventScroll: true });
+          findInputRef.current?.select();
+          return;
         }
+        openFindPanel();
+        return;
+      }
+      if (event.key === "Escape" && findPanelOpen) {
+        event.preventDefault();
+        closeFindPanel();
       }
     };
     window.addEventListener("keydown", handleFindShortcut);

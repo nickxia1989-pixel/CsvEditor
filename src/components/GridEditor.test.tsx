@@ -417,13 +417,25 @@ describe("GridEditor toolbar", () => {
     await waitFor(() => expect(screen.getByLabelText("查找内容")).toHaveFocus());
   });
 
-  it("toggles the find side panel with Ctrl+F", async () => {
+  it("keeps the find side panel open and focuses the input on repeated Ctrl+F", async () => {
     renderGrid();
 
     openFindPanel();
-    await waitFor(() => expect(screen.getByLabelText("查找与替换")).toBeInTheDocument());
+    const findInput = await screen.findByLabelText("查找内容");
+    findInput.blur();
 
     openFindPanel();
+    await waitFor(() => expect(screen.getByLabelText("查找与替换")).toBeInTheDocument());
+    await waitFor(() => expect(findInput).toHaveFocus());
+  });
+
+  it("closes the open find side panel with Escape", async () => {
+    renderGrid();
+
+    openFindPanel();
+    await screen.findByLabelText("查找与替换");
+
+    fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByLabelText("查找与替换")).not.toBeInTheDocument());
   });
 
