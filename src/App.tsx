@@ -134,6 +134,14 @@ const SPLIT_KEYBOARD_LARGE_STEP = 10;
 const DEFAULT_GRID_SCROLL_POSITION: GridScrollPosition = { scrollTop: 0, scrollLeft: 0 };
 const DEFAULT_DESKTOP_WINDOW_STATE: DesktopWindowState = { maximized: false, fullscreen: false };
 
+function isQuickOpenShortcut(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase();
+  const isPrimaryShortcut = (event.ctrlKey || event.metaKey) && !event.shiftKey && key === "p";
+  const isAltShortcut =
+    event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && (key === "w" || key === "f");
+  return isPrimaryShortcut || isAltShortcut;
+}
+
 type WorkspacePaneId = "left" | "right";
 type PaneTabIds = Record<WorkspacePaneId, string | null>;
 
@@ -1450,7 +1458,7 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "p") {
+      if (isQuickOpenShortcut(event)) {
         event.preventDefault();
         event.stopPropagation();
         openQuickOpen();

@@ -1478,6 +1478,31 @@ describe("App local directory flow", () => {
     expect(screen.getByLabelText("Selected cell value")).toHaveValue("ID");
   });
 
+  it("opens the quick file picker from Alt+W and Alt+F", async () => {
+    const file = new MockFileHandle("shortcut.csv", "A,B\n1,2");
+    const root = new MockDirectoryHandle("Tables", [["shortcut.csv", file]]);
+    Object.defineProperty(window, "showDirectoryPicker", {
+      configurable: true,
+      value: vi.fn(async () => root)
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择目录" }));
+    fireEvent.click(await screen.findByRole("button", { name: "shortcut.csv" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "shortcut.csv" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.keyDown(window, { key: "w", altKey: true });
+    let input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "快速打开文件" })).not.toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "f", altKey: true });
+    input = await screen.findByRole("combobox", { name: "快速打开文件" });
+    expect(document.activeElement).toBe(input);
+  });
+
   it("resets Ctrl+P selection to the best result when the search query changes", async () => {
     const files = Array.from({ length: 12 }, (_, index): [string, BrowserFileHandle] => {
       const name = `alpha-${String(index).padStart(2, "0")}.csv`;
